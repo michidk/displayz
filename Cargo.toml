@@ -1,0 +1,21 @@
+[package]
+name = "displayz"
+version = "0.1.0"
+authors = ["Michael Lohr <michael@lohr.dev>", "Schuwi <Schuwi@protonmail.ch>"]
+description = "A CLI tool and library to control display settings on Windows written in Rust. "
+edition = "2021"
+readme = "README.md"
+repository = "https://github.com/michidk/displayz"
+documentation = "https://github.com/michidk/displayz"
+homepage = "https://github.com/michidk/displayz"
+license = "MIT"
+keywords = ["display", "settings", "cli"]
+categories = ["command-line-utilities", "config"]
+
+[dependencies]
+color-eyre = "0.6.1"
+env_logger = "0.9.0"
+log = "0.4.17"
+structopt = "0.3.26"
+thiserror = "1.0.31"
+winsafe = { version = "0.0.10", features = ["user"] }
