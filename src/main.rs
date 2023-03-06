@@ -92,7 +92,7 @@ struct PropertiesOpt {
 
 /// Entry point for `displayz`.
 fn main() -> Result<()> {
-    let _ = color_eyre::install()?;
+    color_eyre::install()?;
 
     let opts = Opts::from_args();
 
@@ -102,10 +102,8 @@ fn main() -> Result<()> {
         log::LevelFilter::Info
     };
 
-    let _ = env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or(log_level.as_str()),
-    )
-    .init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level.as_str()))
+        .init();
 
     log::debug!("Parsed Opts:\n{:#?}", opts);
 

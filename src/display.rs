@@ -130,7 +130,7 @@ impl DisplaySet {
 
         // move all other displays to new position (because we set a new origin in the next step)
         for (i, display) in self.displays.iter().enumerate() {
-            if display.active && i != index as usize {
+            if display.active && i != index {
                 let settings = display
                     .settings
                     .as_ref()
@@ -141,7 +141,7 @@ impl DisplaySet {
         }
 
         // the new primary is the new origin
-        let new_primary_mut = &self.displays[index as usize];
+        let new_primary_mut = &self.displays[index];
         let new_settings = new_primary_mut
             .settings
             .as_ref()
