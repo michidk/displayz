@@ -12,6 +12,10 @@ license = "MIT"
 keywords = ["display", "settings", "cli"]
 categories = ["command-line-utilities", "config"]
 
+[features]
+linux-wayland = [ "wayland-client", "wayland-protocols-wlr" ]
+linux-x11 = []
+
 [dependencies]
 color-eyre = "0.6.2"
 env_logger = "0.10.0"
@@ -21,3 +25,7 @@ thiserror = "1.0.40"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winsafe = { version = "0.0.16", features = ["user"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+wayland-client = { version = "=0.30.0", features = ["log", "calloop"], optional = true }
+wayland-protocols-wlr = { version = "=0.1.0", features = ["client"], optional = true  }
