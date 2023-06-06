@@ -13,9 +13,11 @@ keywords = ["display", "settings", "cli"]
 categories = ["command-line-utilities", "config"]
 
 [dependencies]
-color-eyre = "0.6.1"
-env_logger = "0.9.0"
-log = "0.4.17"
+color-eyre = "0.6.2"
+env_logger = "0.10.0"
+log = "0.4.18"
 structopt = "0.3.26"
-thiserror = "1.0.31"
-winsafe = { version = "0.0.10", features = ["user"] }
+thiserror = "1.0.40"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winsafe = { version = "0.0.16", features = ["user"] }
