@@ -13,8 +13,8 @@ keywords = ["display", "settings", "cli"]
 categories = ["command-line-utilities", "config"]
 
 [features]
-linux-wayland = [ "wayland-client", "wayland-protocols-wlr" ]
-linux-x11 = []
+unix-wayland = [ "wayland-client", "wayland-protocols-wlr" ]
+unix-x11 = []
 
 [dependencies]
 color-eyre = "0.6.2"
