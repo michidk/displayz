@@ -1,6 +1,8 @@
-use displayz::{Resolution, query_displays, refresh};
+#[cfg(windows)]
+use displayz::{query_displays, refresh, Resolution};
 
 /// Prints and changes the current resolution of the primary display
+#[cfg(windows)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let display_set = query_displays()?;
     println!("Discovered displays:\n{}", display_set);
@@ -25,3 +27,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[cfg(not(windows))]
+fn main() {}
