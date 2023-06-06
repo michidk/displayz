@@ -1,4 +1,4 @@
 mod display;
 mod properties;
 
-pub use self::*::*;
+pub use crate::windows::*;
