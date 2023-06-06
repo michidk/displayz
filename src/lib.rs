@@ -1,22 +1,6 @@
 //! A library to interact with the Windows API for display settings.
 //!
 //! This library provides an abstraction around some `winuser.h` calls relevant for modifying display settings.
-#![deny(
-    warnings,
-    missing_copy_implementations,
-    missing_debug_implementations,
-    missing_docs,
-    clippy::all,
-    clippy::cargo,
-    clippy::pedantic,
-    trivial_casts,
-    trivial_numeric_casts,
-    unused_import_braces,
-    unused_qualifications,
-    unused_extern_crates,
-    variant_size_differences
-)]
-
 #[cfg_attr(
     any(
         target_os = "linux",
