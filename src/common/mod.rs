@@ -1,10 +1,10 @@
 //! Common helpers for `displayz`
 
-/// Height and Width of a Display (`usize`)
-pub type Resolution = (usize, usize);
+/// Height and Width of a Display (`i32`)
+pub struct Resolution(i32, i32);
 
 /// X/Y positions of a display.
-pub type Position = (usize, usize);
+pub struct Position(i32, i32);
 
 /// `Vec` type of the `Display` struct, exposed on a platform-dependent basis.
 pub type Displays = Vec<crate::Display>;
