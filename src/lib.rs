@@ -9,7 +9,7 @@
         target_os = "netbsd",
         target_os = "openbsd"
     ),
-    path = "platforms/linux/mod.rs"
+    path = "platforms/unix/mod.rs"
 )]
 #[cfg_attr(target_os = "windows", path = "platforms/windows/mod.rs")]
 #[cfg_attr(target_os = "macos", path = "platforms/macos/mod.rs")]
