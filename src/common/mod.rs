@@ -29,7 +29,7 @@ pub trait DisplayOutput {
     }
     /// Returns the `Position` custom type of the `Display`.
     fn get_position(&self) -> Position;
-    /// Returns the `Resolution` custom type of the `Display`.
+    /// Returns the current `Resolution` of the `Display`.
     fn get_resolution(&self) -> Resolution;
     /// Returns the current supported `Resolutions` of the `Display`.
     fn get_supported_resolutions(&self) -> Resolutions;
