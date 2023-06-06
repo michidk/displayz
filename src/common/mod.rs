@@ -31,8 +31,8 @@ pub trait DisplayOutput {
     fn get_position(&self) -> Position;
     /// Returns the `Resolution` custom type of the `Display`.
     fn get_resolution(&self) -> Resolution;
-    /// Returns the `Resolutions` custom type of the `Display`.
-    fn get_resolutions(&self) -> Resolutions;
+    /// Returns the current supported `Resolutions` of the `Display`.
+    fn get_supported_resolutions(&self) -> Resolutions;
     /// Returns the EDID `&str` of the `Display.
     fn get_edid(&self) -> &str;
 }
