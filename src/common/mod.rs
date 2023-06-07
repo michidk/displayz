@@ -31,5 +31,5 @@ pub trait DisplayOutput {
     /// Returns the current supported `Resolutions` of the `Display`.
     fn get_supported_resolutions(&self) -> Resolutions;
     /// Returns the EDID `&str` of the `Display.
-    fn get_edid(&self) -> &str;
+    fn get_edid(&self) -> Option<&str>;
 }
