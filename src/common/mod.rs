@@ -24,11 +24,6 @@ pub trait DisplayOutput {
     fn is_primary(&self) -> bool;
     /// Returns a boolean result, if the `Display` is currently active or not.
     fn is_active(&self) -> bool;
-    /// Returns a boolean result, if the `Display` is currently focused or not.
-    /// This is not available on all platforms, in the event it's not, it will *always* return `false`.
-    fn is_focused(&self) -> bool {
-        false
-    }
     /// Returns the `Position` custom type of the `Display`.
     fn get_position(&self) -> Position;
     /// Returns the current `Resolution` of the `Display`.
