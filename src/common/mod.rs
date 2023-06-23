@@ -10,8 +10,6 @@ pub struct Position(i32, i32);
 pub type Displays = Vec<crate::Display>;
 
 /// `Vec` type of the `Resolution` type, generally exposing a collection of available resolutions.
-/// NOTE: This type may be removed in future releases. You may rely on it *for now*. Further
-/// developer feedback is required on future of this type's existence.
 pub type Resolutions = Vec<Resolution>;
 
 /// `DisplayOutput` defines the Trait specification of a platform's `Display`.
