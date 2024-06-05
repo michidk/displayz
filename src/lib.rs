@@ -18,3 +18,5 @@ pub use crate::platform::*;
 
 mod common;
 pub use crate::common::*;
+
+pub type Display = Box<dyn DisplayOutput>;
