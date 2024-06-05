@@ -3,15 +3,18 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
 /// Height and Width of a Display (`i32`)
+#[derive(Default, Clone)]
 pub struct Resolution(i32, i32);
 
 /// X/Y positions of a display.
+#[derive(Default, Clone)]
 pub struct Position(i32, i32);
 
 /// `Vec` type of the `Display` type, exposed on a platform-dependent basis.
 pub type Displays = Vec<crate::Display>;
 
 /// `Vec` type of the `Resolution` type, generally exposing a collection of available resolutions.
+#[derive(Default, Clone)]
 pub struct Resolutions(Vec<Resolution>);
 
 impl Display for Resolution {
@@ -31,7 +34,6 @@ impl Debug for Resolutions {
         f.debug_list()
             .entries(self.0.iter())
             .finish()
-            .expect("Unable to format `Debug` output for `Resolutions` struct.");
     }
 }
 
