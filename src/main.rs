@@ -5,7 +5,7 @@ use std::cell::RefMut;
 
 use color_eyre::eyre::{eyre, Result};
 use displayz::{
-    query_displays, refresh, DisplaySettings, FixedOutput, Orientation, Position, Resolution,
+    query_displays, refresh, DisplaySettings, FixedOutput, Frequency, Orientation, Position, Resolution
 };
 use structopt::{clap::ArgGroup, StructOpt};
 
@@ -80,7 +80,7 @@ struct PropertiesOpt {
         long_help = "Sets the orientation of the display. One of: `Default`, `UpsideDown`, `Right`, `Left`"
     )]
     orientation: Option<Orientation>,
-    /// ets the fixed output of the display
+    /// Sets the fixed output of the display
     #[structopt(
         group = "prop",
         short,
@@ -88,6 +88,14 @@ struct PropertiesOpt {
         long_help = "Sets the fixed output of the display. One of: `Default`, `Stretch`, `Center`."
     )]
     fixed_output: Option<FixedOutput>,
+    // Sets the refresh rate of the display
+    #[structopt(
+        group = "prop",
+        short,
+        long,
+        long_help = "Sets the refresh rate of the display. Expected format: `<n>`."
+    )]
+    frequency: Option<Frequency>,
 }
 
 /// Entry point for `displayz`.
@@ -172,4 +180,5 @@ fn set_properties(properties: &PropertiesOpt, settings: &mut RefMut<DisplaySetti
     assign_if_ok!(properties, settings, resolution);
     assign_if_ok!(properties, settings, orientation);
     assign_if_ok!(properties, settings, fixed_output);
+    assign_if_ok!(properties, settings, frequency);
 }

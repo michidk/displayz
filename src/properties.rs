@@ -54,6 +54,7 @@ pub struct DisplaySettings {
     pub resolution: Resolution,
     pub orientation: Orientation,
     pub fixed_output: FixedOutput,
+    pub frequency: Frequency,
 }
 
 impl DisplayProperties {
@@ -90,6 +91,7 @@ impl DisplayProperties {
             resolution: Resolution::new(devmode.dmPelsWidth, devmode.dmPelsHeight),
             orientation: Orientation::from_winsafe(devmode.dmDisplayOrientation())?,
             fixed_output: FixedOutput::from_winsafe(devmode.dmDisplayFixedOutput())?,
+            frequency: Frequency(devmode.dmDisplayFrequency),
         })
     }
 
@@ -112,6 +114,7 @@ impl DisplayProperties {
             settings.orientation,
             settings.fixed_output,
             settings.resolution,
+            settings.frequency
         );
 
         let result = winsafe::ChangeDisplaySettingsEx(Some(&self.name), Some(&mut devmode), flags);
@@ -129,6 +132,7 @@ trait FromDisplaySettings {
     fn set_orientation(&mut self, orientation: Orientation);
     fn set_fixed_output(&mut self, fixed_output: FixedOutput);
     fn set_resolution(&mut self, resolution: Resolution);
+    fn set_frequency(&mut self, frequency: Frequency);
 
     /// Converts display settings into a `winsafe::DEVMODE` struct
     fn from_display_settings(
@@ -136,12 +140,14 @@ trait FromDisplaySettings {
         orientation: Orientation,
         fixed_output: FixedOutput,
         resolution: Resolution,
+        frequency: Frequency,
     ) -> winsafe::DEVMODE {
         let mut devmode = winsafe::DEVMODE::default();
         devmode.set_position(position);
         devmode.set_orientation(orientation);
         devmode.set_fixed_output(fixed_output);
         devmode.set_resolution(resolution);
+        devmode.set_frequency(frequency);
         devmode
     }
 }
@@ -166,6 +172,11 @@ impl FromDisplaySettings for winsafe::DEVMODE {
         self.dmPelsWidth = resolution.width;
         self.dmPelsHeight = resolution.height;
         self.dmFields |= winsafe::co::DM::PELSWIDTH | winsafe::co::DM::PELSHEIGHT;
+    }
+
+    fn set_frequency(&mut self, frequency: Frequency) {
+        self.dmDisplayFrequency = frequency.0;
+        self.dmFields |= winsafe::co::DM::DISPLAYFREQUENCY;
     }
 }
 
@@ -285,14 +296,14 @@ pub enum ParseResolutionError {
 }
 
 impl FromStr for Resolution {
-    type Err = ParsePositionError;
+    type Err = ParseResolutionError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let mut parts = s.split('x');
-        let width = parts.next().ok_or(ParsePositionError::FirstPart)?.parse()?;
+        let width = parts.next().ok_or(ParseResolutionError::FirstPart)?.parse()?;
         let height = parts
             .next()
-            .ok_or(ParsePositionError::SecondPart)?
+            .ok_or(ParseResolutionError::SecondPart)?
             .parse()?;
         Ok(Self::new(width, height))
     }
@@ -402,6 +413,23 @@ impl fmt::Display for FixedOutput {
             FixedOutput::Stretch => write!(f, "Stretch"),
             FixedOutput::Center => write!(f, "Center"),
         }
+    }
+}
+
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Frequency(u32);
+
+#[derive(Error, Debug)]
+pub enum ParseFrequencyError {
+    #[error("Error parsing integer")]
+    IntError(#[from] std::num::ParseIntError),
+}
+
+impl FromStr for Frequency {
+    type Err = ParseFrequencyError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(Frequency(s.parse::<u32>()?))
     }
 }
 
