@@ -5,7 +5,8 @@ use std::cell::RefMut;
 
 use color_eyre::eyre::{eyre, Result};
 use displayz::{
-    query_displays, refresh, DisplaySettings, FixedOutput, Frequency, Orientation, Position, Resolution
+    query_displays, refresh, DisplaySettings, FixedOutput, Frequency, Orientation, Position,
+    Resolution,
 };
 use structopt::{clap::ArgGroup, StructOpt};
 
@@ -91,7 +92,7 @@ struct PropertiesOpt {
     // Sets the refresh rate of the display
     #[structopt(
         group = "prop",
-        short,
+        short("t"),
         long,
         long_help = "Sets the refresh rate of the display. Expected format: `<n>`."
     )]

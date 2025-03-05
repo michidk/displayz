@@ -114,7 +114,7 @@ impl DisplayProperties {
             settings.orientation,
             settings.fixed_output,
             settings.resolution,
-            settings.frequency
+            settings.frequency,
         );
 
         let result = winsafe::ChangeDisplaySettingsEx(Some(&self.name), Some(&mut devmode), flags);
@@ -300,7 +300,10 @@ impl FromStr for Resolution {
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let mut parts = s.split('x');
-        let width = parts.next().ok_or(ParseResolutionError::FirstPart)?.parse()?;
+        let width = parts
+            .next()
+            .ok_or(ParseResolutionError::FirstPart)?
+            .parse()?;
         let height = parts
             .next()
             .ok_or(ParseResolutionError::SecondPart)?
