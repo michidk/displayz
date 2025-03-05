@@ -422,6 +422,12 @@ impl fmt::Display for FixedOutput {
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Frequency(u32);
 
+impl Frequency {
+    pub fn new(v: u32) -> Self {
+        Self(v)
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum ParseFrequencyError {
     #[error("Error parsing integer")]
