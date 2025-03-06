@@ -1,4 +1,4 @@
-use displayz::{query_displays, refresh, Resolution};
+use displayz::{Resolution, query_displays, refresh};
 
 /// Prints and changes the current resolution of the primary display
 fn main() -> Result<(), Box<dyn std::error::Error>> {

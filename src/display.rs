@@ -2,11 +2,11 @@ use core::fmt;
 use std::cell::{Cell, RefCell};
 
 use thiserror::Error;
-use winsafe::{co, EnumDisplayDevices, DISPLAY_DEVICE};
+use winsafe::{DISPLAY_DEVICE, EnumDisplayDevices, co};
 
 use crate::{
-    properties::{DisplayProperties, DisplaySettings, Position},
     DisplayPropertiesError,
+    properties::{DisplayProperties, DisplaySettings, Position},
 };
 
 /// Error type for the display module

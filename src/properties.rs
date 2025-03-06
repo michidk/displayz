@@ -4,7 +4,7 @@ use std::ops::{Add, Neg, Sub};
 use std::str::FromStr;
 
 use thiserror::Error;
-use winsafe::{co, prelude::NativeBitflag, GmidxEnum, DISPLAY_DEVICE, POINT};
+use winsafe::{DISPLAY_DEVICE, GmidxEnum, POINT, co, prelude::NativeBitflag};
 
 /// Error type for the display module
 #[derive(Error, Debug)]

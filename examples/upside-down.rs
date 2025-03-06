@@ -1,4 +1,4 @@
-use displayz::{query_displays, refresh, Orientation};
+use displayz::{Orientation, query_displays, refresh};
 
 /// Turns the primary display upside-down
 fn main() -> Result<(), Box<dyn std::error::Error>> {

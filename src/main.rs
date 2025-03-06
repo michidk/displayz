@@ -3,12 +3,12 @@
 //! Use the `--help` flag to see the available options.
 use std::cell::RefMut;
 
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::{Result, eyre};
 use displayz::{
-    query_displays, refresh, DisplaySettings, FixedOutput, Frequency, Orientation, Position,
-    Resolution,
+    DisplaySettings, FixedOutput, Frequency, Orientation, Position, Resolution, query_displays,
+    refresh,
 };
-use structopt::{clap::ArgGroup, StructOpt};
+use structopt::{StructOpt, clap::ArgGroup};
 
 /// CLI arguments
 #[derive(StructOpt, Debug)]
@@ -168,7 +168,7 @@ fn main() -> Result<()> {
 
 /// Sets a specific settings from the given properties
 macro_rules! assign_if_ok {
-    ($properties:expr, $settings:expr, $name:ident) => {
+    ($properties:expr_2021, $settings:expr_2021, $name:ident) => {
         if let Some(value) = $properties.$name {
             $settings.$name = value;
         }
