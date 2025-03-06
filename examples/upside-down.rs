@@ -7,7 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(settings) = display_set.primary().settings() {
         {
-            let mut settings = &mut *settings.borrow_mut();
+            let settings = &mut *settings.borrow_mut();
             println!("Current orientation: {:?}", settings.orientation);
 
             settings.orientation = match settings.orientation {
