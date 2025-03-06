@@ -13,9 +13,9 @@ keywords = ["display", "settings", "cli"]
 categories = ["command-line-utilities", "config"]
 
 [dependencies]
-color-eyre = "0.6.1"
-env_logger = "0.9.0"
-log = "0.4.17"
+color-eyre = "0.6.3"
+env_logger = "0.11.6"
+log = "0.4.26"
 structopt = "0.3.26"
-thiserror = "1.0.31"
+thiserror = "2.0.12"
 winsafe = { version = "0.0.10", features = ["user"] }
