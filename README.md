@@ -49,6 +49,7 @@ The `<properties>` argument can be multiple (but at least one and max one per ki
   - Orientation can be either `Default`, `UpsideDown`, `Right` or `Left`.
 - `--fixedoutput <fixed output mode>`: Sets the fixed output mode of the display.
   - The mode can be one of `Default`, `Stretch` or `Center`.
+- `--frequency <frequency>`: Sets the refresh rate of the display.
 
 ### Rust Library
 
