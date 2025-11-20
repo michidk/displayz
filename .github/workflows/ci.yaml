@@ -8,7 +8,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Run cargo check
         uses: actions-rs/cargo@v1
         with:
@@ -19,7 +19,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
@@ -30,7 +30,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
         with:
