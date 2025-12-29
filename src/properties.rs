@@ -123,11 +123,24 @@ impl DisplayProperties {
             settings.frequency,
         );
 
+        log::debug!(
+            "Applying settings for {}: primary={}, flags={:?}",
+            self.name,
+            self.primary.get(),
+            flags
+        );
+
         let result = winsafe::ChangeDisplaySettingsEx(Some(&self.name), Some(&mut devmode), flags);
         // use into_ok_or_err as soon it is stable
         match result {
-            Ok(_) => Ok(()),
-            Err(err) => Err(DisplayPropertiesError::ApplyFailed(err)),
+            Ok(_) => {
+                log::debug!("Successfully applied settings for {}", self.name);
+                Ok(())
+            }
+            Err(err) => {
+                log::error!("Failed to apply settings for {}: {:?}", self.name, err);
+                Err(DisplayPropertiesError::ApplyFailed(err))
+            }
         }
     }
 }

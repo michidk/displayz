@@ -200,7 +200,18 @@ pub fn query_displays() -> Result<DisplaySet> {
     let mut primary_index = 0;
 
     for (dev_num, display_device) in EnumDisplayDevices(None, None).enumerate() {
-        let display_device = display_device?;
+        let display_device = match display_device {
+            Ok(dd) => dd,
+            Err(e) => {
+                // Windows 11 24H2 returns ERROR_INVALID_HANDLE after enumerating all displays
+                // This is expected behavior when there are no more displays to enumerate
+                if e == co::ERROR::INVALID_HANDLE {
+                    log::debug!("No more displays to enumerate (got ERROR_INVALID_HANDLE)");
+                    break;
+                }
+                return Err(e.into());
+            }
+        };
 
         log::debug!(
             "{}: {} - {}",
