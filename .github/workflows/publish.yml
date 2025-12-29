@@ -1,0 +1,79 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag-name:
+        description: 'The git tag to publish'
+        required: true
+        type: string
+
+jobs:
+  publish-cratesio:
+    name: Publish to crates.io
+    runs-on: ubuntu-24.04
+    environment: "publish-crates.io"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag-name }}
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # This plugin should be loaded after toolchain setup
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Upload to crates.io
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-homebrew:
+    name: Publish to Homebrew
+    runs-on: ubuntu-24.04
+    environment: "publish-homebrew"
+    steps:
+      - name: Checkout homebrew-tools Repository
+        uses: actions/checkout@v6
+        with:
+          repository: michidk/homebrew-tools
+          token: ${{ secrets.COMMITTER_TOKEN }}
+          path: homebrew-tools
+          ref: main
+
+      - name: Update displayz.rb Formula
+        run: |
+          FORMULA_PATH="homebrew-tools/Formula/displayz.rb"
+          mkdir -p artifacts
+
+          artifacts=(
+            "displayz-x86_64-apple-darwin.tar.gz"
+            "displayz-aarch64-apple-darwin.tar.gz"
+            "displayz-x86_64-unknown-linux-musl.tar.gz"
+            "displayz-arm-unknown-linux-gnueabihf.tar.gz"
+          )
+
+          for asset in "${artifacts[@]}"; do
+            identifier="${asset%.tar.gz}"
+            wget -q -O "artifacts/${asset}" "https://github.com/michidk/displayz/releases/download/${{ github.event.inputs.tag-name }}/${asset}" || exit 1
+            sha256=$(sha256sum "artifacts/${asset}" | awk '{print $1}')
+            sed -i "s|sha256 \".*\" # sha:${identifier}|sha256 \"${sha256}\" # sha:${identifier}|" "$FORMULA_PATH"
+          done
+
+          # Extract version number by removing the leading 'v' from the tag
+          version_number="${{ github.event.inputs.tag-name }}"
+          version_number="${version_number#v}"
+
+          sed -i "s/version \".*\"/version \"${version_number}\"/" "$FORMULA_PATH"
+
+      - name: Commit and Push Changes
+        run: |
+          cd homebrew-tools
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/displayz.rb
+          git commit -m "Update displayz to version ${{ github.event.inputs.tag-name }}"
+          git push origin main
