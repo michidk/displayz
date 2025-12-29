@@ -1,5 +1,5 @@
 use core::fmt;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ops::{Add, Neg, Sub};
 use std::str::FromStr;
 
@@ -24,7 +24,7 @@ pub enum DisplayPropertiesError {
 type Result<T = ()> = std::result::Result<T, DisplayPropertiesError>;
 
 /// Contains the properties of a display
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct DisplayProperties {
     pub name: String,
 
@@ -32,7 +32,7 @@ pub struct DisplayProperties {
     pub key: String,
 
     pub active: bool,
-    pub primary: bool,
+    pub primary: Cell<bool>,
 
     pub settings: Option<RefCell<DisplaySettings>>,
 }
@@ -42,7 +42,11 @@ impl fmt::Display for DisplayProperties {
         write!(
             f,
             "Display {{ key: {}, name: {}, string: {}, active: {}, primary: {} }}",
-            self.key, self.name, self.string, self.active, self.primary
+            self.key,
+            self.name,
+            self.string,
+            self.active,
+            self.primary.get()
         )
     }
 }
@@ -60,7 +64,9 @@ pub struct DisplaySettings {
 impl DisplayProperties {
     /// Create a display properties struct from a winsafe display
     pub fn from_winsafe(device: &DISPLAY_DEVICE) -> Result<DisplayProperties> {
-        let active = device.StateFlags.has(co::DISPLAY_DEVICE::ATTACHED_TO_DESKTOP);
+        let active = device
+            .StateFlags
+            .has(co::DISPLAY_DEVICE::ATTACHED_TO_DESKTOP);
         let settings = if active {
             Some(RefCell::new(Self::fetch_settings(&device.DeviceName())?))
         } else {
@@ -72,7 +78,7 @@ impl DisplayProperties {
             string: device.DeviceString(),
             key: device.DeviceKey(),
             active,
-            primary: device.StateFlags.has(co::DISPLAY_DEVICE::PRIMARY_DEVICE),
+            primary: Cell::new(device.StateFlags.has(co::DISPLAY_DEVICE::PRIMARY_DEVICE)),
             settings,
         })
     }
@@ -105,7 +111,7 @@ impl DisplayProperties {
         let mut flags =
             winsafe::co::CDS::UPDATEREGISTRY | winsafe::co::CDS::NORESET | winsafe::co::CDS::GLOBAL;
 
-        if self.primary {
+        if self.primary.get() {
             flags |= winsafe::co::CDS::SET_PRIMARY;
         }
 

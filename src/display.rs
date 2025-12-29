@@ -27,7 +27,7 @@ pub enum DisplayError {
 type Result<T = ()> = std::result::Result<T, DisplayError>;
 
 /// A struct that represents a display (index)
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Display<'a> {
     /// The index of the display in the display set
     index: usize,
@@ -75,7 +75,7 @@ impl Display<'_> {
 }
 
 /// A struct that represents a set of displays
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct DisplaySet {
     /// The displays in this set
     displays: Vec<DisplayProperties>,
@@ -137,6 +137,8 @@ impl DisplaySet {
                     .ok_or_else(|| DisplayError::NoSettings(display.name.to_string()))?;
                 let pos = settings.borrow().position;
                 settings.borrow_mut().position = -old_position + pos;
+                // unset primary flag on all other displays
+                display.primary.set(false);
             }
         }
 
@@ -148,6 +150,8 @@ impl DisplaySet {
             .ok_or_else(|| DisplayError::NoSettings(new_primary_mut.name.to_string()))?;
 
         new_settings.borrow_mut().position = Position::new(0, 0);
+        // set primary flag on the new primary display
+        new_primary_mut.primary.set(true);
 
         self.primary_display.set(index);
 
@@ -156,8 +160,19 @@ impl DisplaySet {
 
     /// Sets all changes on the displays
     pub fn apply(&self) -> Result {
-        for display in self.displays.iter() {
-            if display.active {
+        let primary_idx = self.primary_display.get();
+
+        // Apply the primary display first (Windows API requirement)
+        if primary_idx < self.displays.len() {
+            let primary = &self.displays[primary_idx];
+            if primary.active {
+                primary.apply()?;
+            }
+        }
+
+        // Then apply all other displays
+        for (i, display) in self.displays.iter().enumerate() {
+            if display.active && i != primary_idx {
                 display.apply()?;
             }
         }
@@ -182,6 +197,7 @@ impl fmt::Display for DisplaySet {
 /// Returns a list of all displays.
 pub fn query_displays() -> Result<DisplaySet> {
     let mut result = Vec::<DisplayProperties>::new();
+    let mut primary_index = 0;
 
     for (dev_num, display_device) in EnumDisplayDevices(None, None).enumerate() {
         let display_device = display_device?;
@@ -193,12 +209,16 @@ pub fn query_displays() -> Result<DisplaySet> {
             display_device.DeviceString()
         );
 
-        result.push(DisplayProperties::from_winsafe(display_device)?);
+        let properties = DisplayProperties::from_winsafe(display_device)?;
+        if properties.primary.get() {
+            primary_index = dev_num;
+        }
+        result.push(properties);
     }
 
     Ok(DisplaySet {
         displays: result,
-        primary_display: Cell::new(0),
+        primary_display: Cell::new(primary_index),
     })
 }
 
