@@ -4,7 +4,7 @@ use std::ops::{Add, Neg, Sub};
 use std::str::FromStr;
 
 use thiserror::Error;
-use winsafe::{DISPLAY_DEVICE, GmidxEnum, POINT, co, prelude::NativeBitflag};
+use winsafe::{DISPLAY_DEVICE, GmidxEnum, POINT, co};
 
 /// Error type for the display module
 #[derive(Error, Debug)]
@@ -60,7 +60,7 @@ pub struct DisplaySettings {
 impl DisplayProperties {
     /// Create a display properties struct from a winsafe display
     pub fn from_winsafe(device: &DISPLAY_DEVICE) -> Result<DisplayProperties> {
-        let active = device.StateFlags.has(co::DISPLAY_DEVICE::ACTIVE);
+        let active = device.StateFlags.has(co::DISPLAY_DEVICE::ATTACHED_TO_DESKTOP);
         let settings = if active {
             Some(RefCell::new(Self::fetch_settings(&device.DeviceName())?))
         } else {

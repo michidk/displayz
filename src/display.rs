@@ -2,7 +2,7 @@ use core::fmt;
 use std::cell::{Cell, RefCell};
 
 use thiserror::Error;
-use winsafe::{DISPLAY_DEVICE, EnumDisplayDevices, co};
+use winsafe::{EnumDisplayDevices, co};
 
 use crate::{
     DisplayPropertiesError,
@@ -85,7 +85,7 @@ pub struct DisplaySet {
 
 impl DisplaySet {
     /// Iterates over the displays in this set
-    pub fn displays(&self) -> impl ExactSizeIterator<Item = Display> {
+    pub fn displays(&self) -> impl ExactSizeIterator<Item = Display<'_>> {
         self.displays.iter().enumerate().map(|(index, _)| Display {
             index,
             display_set: self,
@@ -93,7 +93,7 @@ impl DisplaySet {
     }
 
     /// Returns display for the given `index`
-    pub fn get(&self, index: usize) -> Option<Display> {
+    pub fn get(&self, index: usize) -> Option<Display<'_>> {
         if index >= self.displays.len() {
             return None;
         }
@@ -104,7 +104,7 @@ impl DisplaySet {
     }
 
     /// Returns the primary display
-    pub fn primary(&self) -> Display {
+    pub fn primary(&self) -> Display<'_> {
         Display {
             index: self.primary_display.get(),
             display_set: self,
@@ -183,16 +183,8 @@ impl fmt::Display for DisplaySet {
 pub fn query_displays() -> Result<DisplaySet> {
     let mut result = Vec::<DisplayProperties>::new();
 
-    let mut dev_num: usize = 0;
-    let mut display_device = DISPLAY_DEVICE::default();
-
-    loop {
-        let is_good =
-            EnumDisplayDevices(None, dev_num as u32, &mut display_device, co::EDD::NoValue)?;
-
-        if !is_good {
-            break;
-        }
+    for (dev_num, display_device) in EnumDisplayDevices(None, None).enumerate() {
+        let display_device = display_device?;
 
         log::debug!(
             "{}: {} - {}",
@@ -201,9 +193,7 @@ pub fn query_displays() -> Result<DisplaySet> {
             display_device.DeviceString()
         );
 
-        result.push(DisplayProperties::from_winsafe(&display_device)?);
-
-        dev_num += 1; // advance to next display device
+        result.push(DisplayProperties::from_winsafe(display_device)?);
     }
 
     Ok(DisplaySet {
