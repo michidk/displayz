@@ -5,8 +5,7 @@ use std::cell::RefMut;
 
 use color_eyre::eyre::{Result, eyre};
 use displayz::{
-    DisplaySettings, FixedOutput, Frequency, Orientation, Position, Resolution, query_displays,
-    refresh,
+    DisplaySettings, Frequency, Orientation, Position, Resolution, query_displays, refresh,
 };
 use structopt::{StructOpt, clap::ArgGroup};
 
@@ -34,6 +33,10 @@ enum SubCommands {
         /// The id of the display (optional - if not provided, lists all displays)
         #[structopt(short, long)]
         id: Option<usize>,
+        /// Output as JSON
+        #[cfg(feature = "json")]
+        #[structopt(long)]
+        json: bool,
     },
     /// Sets the primary display
     #[structopt(alias = "sp")]
@@ -80,22 +83,6 @@ struct PropertiesOpt {
         long_help = "Sets the resolution of the display. Expected format: `<width>x<height>`."
     )]
     resolution: Option<Resolution>,
-    /// Sets the orientation of the display
-    #[structopt(
-        group = "prop",
-        short,
-        long,
-        long_help = "Sets the orientation of the display. One of: `Default`, `UpsideDown`, `Right`, `Left`"
-    )]
-    orientation: Option<Orientation>,
-    /// Sets the fixed output of the display
-    #[structopt(
-        group = "prop",
-        short,
-        long,
-        long_help = "Sets the fixed output of the display. One of: `Default`, `Stretch`, `Center`."
-    )]
-    fixed_output: Option<FixedOutput>,
     // Sets the refresh rate of the display
     #[structopt(
         group = "prop",
@@ -104,6 +91,14 @@ struct PropertiesOpt {
         long_help = "Sets the refresh rate of the display. Expected format: `<n>`."
     )]
     frequency: Option<Frequency>,
+    /// Sets the orientation of the display
+    #[structopt(
+        group = "prop",
+        short,
+        long,
+        long_help = "Sets the orientation of the display. Expected format: `landscape`, `portrait`, `landscape_flipped`, or `portrait_flipped`."
+    )]
+    orientation: Option<Orientation>,
 }
 
 /// Entry point for `displayz`.
@@ -127,55 +122,108 @@ fn main() -> Result<()> {
     log::debug!("Discovered displays:\n{}", display_set);
 
     match opts.cmd {
-        SubCommands::Info { id } => {
-            match id {
-                Some(id) => {
-                    // Display info for a specific display
-                    let display = display_set
-                        .get(id)
-                        .ok_or_else(|| eyre!("Display with id {} not found", id))?;
+        SubCommands::Info {
+            id,
+            #[cfg(feature = "json")]
+            json,
+        } => {
+            #[cfg(feature = "json")]
+            let output_json = json;
+            #[cfg(not(feature = "json"))]
+            let output_json = false;
 
-                    println!("Display ID: {}", display.index());
-                    println!("Name:       {}", display.name());
-                    println!("String:     {}", display.string());
-                    println!("Key:        {}", display.key());
-                    println!("Primary:    {}", display.is_primary());
+            if output_json {
+                #[cfg(feature = "json")]
+                {
+                    use displayz::json;
+                    // JSON output
+                    match id {
+                        Some(id) => {
+                            // Display info for a specific display
+                            let display = display_set
+                                .get(id)
+                                .ok_or_else(|| eyre!("Display with id {} not found", id))?;
 
-                    if let Some(settings) = display.settings() {
-                        let settings = settings.borrow();
-                        println!("\nSettings:");
-                        println!("  Position:     {}", settings.position);
-                        println!("  Resolution:   {}", settings.resolution);
-                        println!("  Orientation:  {}", settings.orientation);
-                        println!("  Fixed Output: {}", settings.fixed_output);
-                        println!("  Frequency:    {} Hz", settings.frequency);
-                    } else {
-                        println!("\nSettings:   None (Inactive)");
+                            let json_output = json::display_to_json(&display);
+                            println!("{}", serde_json::to_string_pretty(&json_output)?);
+                        }
+                        None => {
+                            // List all displays
+                            let displays_json: Vec<json::DisplayInfoJson> = display_set
+                                .displays()
+                                .map(|d| json::display_to_json(&d))
+                                .collect();
+                            println!("{}", serde_json::to_string_pretty(&displays_json)?);
+                        }
                     }
                 }
-                None => {
-                    // List all displays
-                    println!("All Displays:");
-                    println!();
-                    for display in display_set.displays() {
+            } else {
+                // Human-readable output
+                match id {
+                    Some(id) => {
+                        // Display info for a specific display
+                        let display = display_set
+                            .get(id)
+                            .ok_or_else(|| eyre!("Display with id {} not found", id))?;
+
                         println!("Display ID: {}", display.index());
+                        // Windows display number corresponds to the number shown in Windows Settings (Display ID + 1)
+                        println!("Windows Display Number: {}", display.index() + 1);
                         println!("Name:       {}", display.name());
                         println!("String:     {}", display.string());
                         println!("Key:        {}", display.key());
                         println!("Primary:    {}", display.is_primary());
+                        if let Some(connector) = display.connector_type() {
+                            println!("Connector:  {}", connector);
+                        }
+                        println!("Available:  {}", display.target_available());
 
                         if let Some(settings) = display.settings() {
                             let settings = settings.borrow();
-                            println!("Settings:");
-                            println!("  Position:     {}", settings.position);
-                            println!("  Resolution:   {}", settings.resolution);
-                            println!("  Orientation:  {}", settings.orientation);
-                            println!("  Fixed Output: {}", settings.fixed_output);
-                            println!("  Frequency:    {} Hz", settings.frequency);
+                            println!("\nSettings:");
+                            println!("  Position:          {}", settings.position);
+                            println!("  Resolution:        {}", settings.resolution);
+                            println!("  Frequency:         {} Hz", settings.frequency);
+                            println!("  Orientation:       {}", settings.orientation);
+                            println!("  Scaling:           {}", settings.scaling);
+                            println!("  Bit Depth:         {}", settings.bit_depth);
+                            println!("  Scanline Ordering: {}", settings.scanline_ordering);
                         } else {
-                            println!("Settings:   None (Inactive)");
+                            println!("\nSettings:   None (Inactive)");
                         }
+                    }
+                    None => {
+                        // List all displays
+                        println!("All Displays:");
                         println!();
+                        for display in display_set.displays() {
+                            println!("Display ID: {}", display.index());
+                            // Windows display number corresponds to the number shown in Windows Settings (Display ID + 1)
+                            println!("Windows Display Number: {}", display.index() + 1);
+                            println!("Name:       {}", display.name());
+                            println!("String:     {}", display.string());
+                            println!("Key:        {}", display.key());
+                            println!("Primary:    {}", display.is_primary());
+                            if let Some(connector) = display.connector_type() {
+                                println!("Connector:  {}", connector);
+                            }
+                            println!("Available:  {}", display.target_available());
+
+                            if let Some(settings) = display.settings() {
+                                let settings = settings.borrow();
+                                println!("Settings:");
+                                println!("  Position:          {}", settings.position);
+                                println!("  Resolution:        {}", settings.resolution);
+                                println!("  Frequency:         {} Hz", settings.frequency);
+                                println!("  Orientation:       {}", settings.orientation);
+                                println!("  Scaling:           {}", settings.scaling);
+                                println!("  Bit Depth:         {}", settings.bit_depth);
+                                println!("  Scanline Ordering: {}", settings.scanline_ordering);
+                            } else {
+                                println!("Settings:   None (Inactive)");
+                            }
+                            println!();
+                        }
                     }
                 }
             }
@@ -201,7 +249,7 @@ fn main() -> Result<()> {
                 Err(eyre!("Primary display has no settings"))?;
             }
 
-            display.apply()?;
+            display_set.apply()?;
             refresh()?;
             log::info!("Display settings changed");
         }
@@ -217,7 +265,7 @@ fn main() -> Result<()> {
                 Err(eyre!("Display has no settings"))?;
             }
 
-            display.apply()?;
+            display_set.apply()?;
             refresh()?;
             log::info!("Display settings changed");
         }
@@ -239,7 +287,6 @@ macro_rules! assign_if_ok {
 fn set_properties(properties: &PropertiesOpt, settings: &mut RefMut<DisplaySettings>) {
     assign_if_ok!(properties, settings, position);
     assign_if_ok!(properties, settings, resolution);
-    assign_if_ok!(properties, settings, orientation);
-    assign_if_ok!(properties, settings, fixed_output);
     assign_if_ok!(properties, settings, frequency);
+    assign_if_ok!(properties, settings, orientation);
 }

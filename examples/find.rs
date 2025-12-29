@@ -21,13 +21,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // getting the displays properties by index
-    if let Some(new_primary) = display_set.get(0) {
-        if let Some(settings) = new_primary.settings() {
-            println!(
-                "Position of display with index 0: {}",
-                (*settings.borrow()).position
-            );
-        }
+    if let Some(new_primary) = display_set.get(0)
+        && let Some(settings) = new_primary.settings()
+    {
+        println!(
+            "Position of display with index 0: {}",
+            settings.borrow().position
+        );
     }
 
     Ok(())

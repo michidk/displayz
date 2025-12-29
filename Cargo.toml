@@ -16,10 +16,16 @@ categories = ["command-line-utilities", "config"]
 color-eyre = "0.6.5"
 env_logger = "0.11.8"
 log = "0.4.29"
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
 structopt = "0.3.26"
 thiserror = "2.0.17"
-windows = { version = "0.57", features = [
+windows = { version = "0.62.2", features = [
     "Win32_Graphics_Gdi",
     "Win32_Devices_Display",
     "Win32_Foundation",
 ] }
+
+[features]
+default = ["json"]
+json = ["dep:serde", "dep:serde_json"]
