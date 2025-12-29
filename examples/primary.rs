@@ -1,6 +1,8 @@
+#[cfg(windows)]
 use displayz::{query_displays, refresh};
 
 /// Sets a display to be the new primary display
+#[cfg(windows)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let display_set = query_displays()?;
     println!("Discovered displays:\n{}", display_set);
@@ -22,3 +24,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[cfg(not(windows))]
+fn main() {}

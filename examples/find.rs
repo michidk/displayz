@@ -1,6 +1,8 @@
+#[cfg(windows)]
 use displayz::query_displays;
 
 /// Finds displays by name and index
+#[cfg(windows)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let display_set = query_displays()?;
     println!("Discovered displays:\n{}", display_set);
@@ -32,3 +34,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[cfg(not(windows))]
+fn main() {}

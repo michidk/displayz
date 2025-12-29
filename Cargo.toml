@@ -12,10 +12,22 @@ license = "MIT"
 keywords = ["display", "settings", "cli"]
 categories = ["command-line-utilities", "config"]
 
+[features]
+default = []
+unix-wayland = [ "wayland-client", "wayland-protocols-wlr", "wayland-protocols-plasma" ]
+unix-x11 = []
+
 [dependencies]
 color-eyre = "0.6.3"
 env_logger = "0.11.6"
 log = "0.4.26"
 structopt = "0.3.26"
 thiserror = "2.0.12"
-winsafe = { version = "0.0.10", features = ["user"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winsafe = { version = "0.0.16", features = ["user"] }
+
+[target.'cfg(target_family = "unix")'.dependencies]
+wayland-client = { version = "=0.30.0", features = ["log", "calloop"], optional = true }
+wayland-protocols-wlr = { version = "=0.1.0", features = ["client"], optional = true }
+wayland-protocols-plasma = { version = "=0.2.0", features = ["client"], optional = true }
