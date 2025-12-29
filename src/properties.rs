@@ -1,24 +1,30 @@
 use core::fmt;
 use std::cell::{Cell, RefCell};
-use std::ops::{Add, Neg, Sub};
-use std::str::FromStr;
 
 use thiserror::Error;
-use winsafe::{DISPLAY_DEVICE, GmidxEnum, POINT, co};
+use windows::Win32::Devices::Display::{
+    DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME,
+    DISPLAYCONFIG_DEVICE_INFO_HEADER, DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_PATH_INFO,
+    DISPLAYCONFIG_SOURCE_DEVICE_NAME, DISPLAYCONFIG_TARGET_DEVICE_NAME, DisplayConfigGetDeviceInfo,
+};
+use windows::Win32::Foundation::POINTL;
+use windows::Win32::Graphics::Gdi::{
+    DEVMODEW, DISPLAY_DEVICEW, ENUM_CURRENT_SETTINGS, EnumDisplaySettingsW,
+};
+use windows::core::PCWSTR;
+
+use crate::types::{
+    BitDepth, ConnectorType, Frequency, Orientation, Position, Resolution, Scaling,
+    ScanlineOrdering,
+};
 
 /// Error type for the display module
 #[derive(Error, Debug)]
 pub enum DisplayPropertiesError {
     #[error("Display {0} has no settings")]
     NoSettings(String),
-    #[error("Error when calling the Windows API")]
-    WinAPI(#[from] co::ERROR),
-    #[error("Apply failed, returned flags: {0}")]
-    ApplyFailed(co::DISP_CHANGE),
-    #[error("Invalid orientation: {0}")]
-    InvalidOrientation(String),
-    #[error("Invalid fixed output: {0}")]
-    InvalidFixedOutput(String),
+    #[error("Error when calling the Windows API: {0}")]
+    WinAPI(String),
 }
 
 type Result<T = ()> = std::result::Result<T, DisplayPropertiesError>;
@@ -35,6 +41,10 @@ pub struct DisplayProperties {
     pub primary: Cell<bool>,
 
     pub settings: Option<RefCell<DisplaySettings>>,
+
+    // Additional display information (modern API only)
+    pub connector_type: Option<ConnectorType>,
+    pub target_available: bool,
 }
 
 impl fmt::Display for DisplayProperties {
@@ -56,433 +66,285 @@ impl fmt::Display for DisplayProperties {
 pub struct DisplaySettings {
     pub position: Position,
     pub resolution: Resolution,
-    pub orientation: Orientation,
-    pub fixed_output: FixedOutput,
     pub frequency: Frequency,
+    pub orientation: Orientation,
+    pub scaling: Scaling,
+    pub bit_depth: BitDepth,
+    pub scanline_ordering: ScanlineOrdering,
 }
 
 impl DisplayProperties {
-    /// Create a display properties struct from a winsafe display
-    pub fn from_winsafe(device: &DISPLAY_DEVICE) -> Result<DisplayProperties> {
-        let active = device
-            .StateFlags
-            .has(co::DISPLAY_DEVICE::ATTACHED_TO_DESKTOP);
+    /// Create a display properties struct from a Windows display device
+    pub fn from_windows(device: &DISPLAY_DEVICEW) -> Result<DisplayProperties> {
+        use windows::Win32::Graphics::Gdi::DISPLAY_DEVICE_STATE_FLAGS;
+        let active = (device.StateFlags & DISPLAY_DEVICE_STATE_FLAGS(0x00000001))
+            != DISPLAY_DEVICE_STATE_FLAGS(0); // DISPLAY_DEVICE_ATTACHED_TO_DESKTOP
+
+        // Convert device name from wide string
+        let name = {
+            let len = device
+                .DeviceName
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(device.DeviceName.len());
+            String::from_utf16_lossy(&device.DeviceName[..len])
+        };
+
         let settings = if active {
-            Some(RefCell::new(Self::fetch_settings(&device.DeviceName())?))
+            Some(RefCell::new(Self::fetch_settings(&name)?))
         } else {
             None
         };
 
+        // Convert device string from wide string
+        let string = {
+            let len = device
+                .DeviceString
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(device.DeviceString.len());
+            String::from_utf16_lossy(&device.DeviceString[..len])
+        };
+
+        // Convert device key from wide string
+        let key = {
+            let len = device
+                .DeviceKey
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(device.DeviceKey.len());
+            String::from_utf16_lossy(&device.DeviceKey[..len])
+        };
+
         Ok(DisplayProperties {
-            name: device.DeviceName(),
-            string: device.DeviceString(),
-            key: device.DeviceKey(),
+            name,
+            string,
+            key,
             active,
-            primary: Cell::new(device.StateFlags.has(co::DISPLAY_DEVICE::PRIMARY_DEVICE)),
+            primary: Cell::new(
+                (device.StateFlags & DISPLAY_DEVICE_STATE_FLAGS(0x00000004))
+                    != DISPLAY_DEVICE_STATE_FLAGS(0),
+            ), // DISPLAY_DEVICE_PRIMARY_DEVICE
             settings,
+            connector_type: None,     // Not available in legacy API
+            target_available: active, // Assume available if active
         })
     }
 
     /// Fetch the settings of a display
     fn fetch_settings(name: &str) -> Result<DisplaySettings> {
-        let mut devmode = winsafe::DEVMODE::default();
-        winsafe::EnumDisplaySettings(
-            Some(name),
-            GmidxEnum::Enum(winsafe::co::ENUM_SETTINGS::CURRENT),
-            &mut devmode,
-        )?;
+        let mut devmode: DEVMODEW = unsafe { std::mem::zeroed() };
+        devmode.dmSize = std::mem::size_of::<DEVMODEW>() as u16;
+
+        // Convert name to wide string
+        let wide_name: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+
+        let result = unsafe {
+            EnumDisplaySettingsW(
+                PCWSTR(wide_name.as_ptr()),
+                ENUM_CURRENT_SETTINGS,
+                &mut devmode,
+            )
+        };
+
+        if !result.as_bool() {
+            return Err(DisplayPropertiesError::WinAPI(format!(
+                "EnumDisplaySettingsW failed for display {}",
+                name
+            )));
+        }
 
         Ok(DisplaySettings {
-            position: Position(devmode.dmPosition()),
+            position: Position(POINTL {
+                x: unsafe { devmode.Anonymous1.Anonymous2.dmPosition.x },
+                y: unsafe { devmode.Anonymous1.Anonymous2.dmPosition.y },
+            }),
             resolution: Resolution::new(devmode.dmPelsWidth, devmode.dmPelsHeight),
-            orientation: Orientation::from_winsafe(devmode.dmDisplayOrientation())?,
-            fixed_output: FixedOutput::from_winsafe(devmode.dmDisplayFixedOutput())?,
             frequency: Frequency(devmode.dmDisplayFrequency),
+            orientation: Orientation::from_rotation(unsafe {
+                devmode.Anonymous1.Anonymous2.dmDisplayOrientation.0
+            }),
+            scaling: Scaling::default(), // Not available in legacy API
+            bit_depth: BitDepth::Bpp32,  // Default assumption
+            scanline_ordering: ScanlineOrdering::Progressive, // Default assumption
         })
     }
 
-    /// Apply the settings of the display
-    pub fn apply(&self) -> Result {
-        if self.settings.is_none() {
-            return Err(DisplayPropertiesError::NoSettings(self.name.to_string()));
+    /// Create a display properties struct from modern Windows Display Configuration API
+    pub fn from_display_config(
+        path: &DISPLAYCONFIG_PATH_INFO,
+        modes: &[DISPLAYCONFIG_MODE_INFO],
+    ) -> Result<DisplayProperties> {
+        let active = (path.flags & 0x00000001) != 0; // DISPLAYCONFIG_PATH_ACTIVE
+
+        // Get source and target mode indices
+        let source_mode_idx = unsafe { path.sourceInfo.Anonymous.modeInfoIdx as usize };
+        let target_mode_idx = unsafe { path.targetInfo.Anonymous.modeInfoIdx as usize };
+
+        if source_mode_idx >= modes.len() || target_mode_idx >= modes.len() {
+            return Err(DisplayPropertiesError::WinAPI(
+                "Invalid mode index in display path".to_string(),
+            ));
         }
-        let settings = self.settings.as_ref().unwrap().borrow(); // safe, because we just checked it
 
-        let mut flags =
-            winsafe::co::CDS::UPDATEREGISTRY | winsafe::co::CDS::NORESET | winsafe::co::CDS::GLOBAL;
+        let source_mode = &modes[source_mode_idx];
+        let target_mode = &modes[target_mode_idx];
 
-        if self.primary.get() {
-            flags |= winsafe::co::CDS::SET_PRIMARY;
-        }
+        // Extract position from source mode
+        let position = unsafe { source_mode.Anonymous.sourceMode.position };
 
-        let mut devmode = winsafe::DEVMODE::from_display_settings(
-            settings.position,
-            settings.orientation,
-            settings.fixed_output,
-            settings.resolution,
-            settings.frequency,
-        );
+        // Determine if primary (position == 0,0)
+        let is_primary = position.x == 0 && position.y == 0;
 
-        log::debug!(
-            "Applying settings for {}: primary={}, flags={:?}",
-            self.name,
-            self.primary.get(),
-            flags
-        );
+        // Get device names via DisplayConfigGetDeviceInfo
+        let name = Self::get_source_device_name(path)?;
+        let (string, key) = Self::get_target_device_info(path)?;
 
-        let result = winsafe::ChangeDisplaySettingsEx(Some(&self.name), Some(&mut devmode), flags);
-        // use into_ok_or_err as soon it is stable
-        match result {
-            Ok(_) => {
-                log::debug!("Successfully applied settings for {}", self.name);
-                Ok(())
-            }
-            Err(err) => {
-                log::error!("Failed to apply settings for {}: {:?}", self.name, err);
-                Err(DisplayPropertiesError::ApplyFailed(err))
-            }
-        }
-    }
-}
+        let settings = if active {
+            Some(RefCell::new(Self::fetch_settings_from_mode(
+                path,
+                source_mode,
+                target_mode,
+            )?))
+        } else {
+            None
+        };
 
-/// Provides methods to set properties of `winsafe::DEVMODE`
-trait FromDisplaySettings {
-    fn set_position(&mut self, position: Position);
-    fn set_orientation(&mut self, orientation: Orientation);
-    fn set_fixed_output(&mut self, fixed_output: FixedOutput);
-    fn set_resolution(&mut self, resolution: Resolution);
-    fn set_frequency(&mut self, frequency: Frequency);
+        // Extract connector type
+        let connector_type = Some(ConnectorType::from_value(
+            path.targetInfo.outputTechnology.0,
+        ));
 
-    /// Converts display settings into a `winsafe::DEVMODE` struct
-    fn from_display_settings(
-        position: Position,
-        orientation: Orientation,
-        fixed_output: FixedOutput,
-        resolution: Resolution,
-        frequency: Frequency,
-    ) -> winsafe::DEVMODE {
-        let mut devmode = winsafe::DEVMODE::default();
-        devmode.set_position(position);
-        devmode.set_orientation(orientation);
-        devmode.set_fixed_output(fixed_output);
-        devmode.set_resolution(resolution);
-        devmode.set_frequency(frequency);
-        devmode
-    }
-}
+        // Extract target availability
+        let target_available = path.targetInfo.targetAvailable.as_bool();
 
-impl FromDisplaySettings for winsafe::DEVMODE {
-    fn set_position(&mut self, position: Position) {
-        self.set_dmPosition(position.0);
-        self.dmFields |= winsafe::co::DM::POSITION;
-    }
-
-    fn set_orientation(&mut self, orientation: Orientation) {
-        self.set_dmDisplayOrientation(orientation.to_winsafe());
-        self.dmFields |= winsafe::co::DM::DISPLAYORIENTATION;
-    }
-
-    fn set_fixed_output(&mut self, fixed_output: FixedOutput) {
-        self.set_dmDisplayFixedOutput(fixed_output.to_winsafe());
-        self.dmFields |= winsafe::co::DM::DISPLAYFIXEDOUTPUT;
-    }
-
-    fn set_resolution(&mut self, resolution: Resolution) {
-        self.dmPelsWidth = resolution.width;
-        self.dmPelsHeight = resolution.height;
-        self.dmFields |= winsafe::co::DM::PELSWIDTH | winsafe::co::DM::PELSHEIGHT;
-    }
-
-    fn set_frequency(&mut self, frequency: Frequency) {
-        self.dmDisplayFrequency = frequency.0;
-        self.dmFields |= winsafe::co::DM::DISPLAYFREQUENCY;
-    }
-}
-
-/// Contains the position of a display
-#[derive(Default, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Position(POINT);
-
-impl Position {
-    /// Create a position
-    pub fn new(x: i32, y: i32) -> Self {
-        Self(POINT { x, y })
-    }
-}
-
-impl Add for Position {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self {
-        Self(POINT {
-            x: self.0.x + other.0.x,
-            y: self.0.y + other.0.y,
+        Ok(DisplayProperties {
+            name,
+            string,
+            key,
+            active,
+            primary: Cell::new(is_primary),
+            settings,
+            connector_type,
+            target_available,
         })
     }
-}
 
-impl Sub for Position {
-    type Output = Self;
+    /// Gets the GDI device name for a display path
+    pub fn get_source_device_name(path: &DISPLAYCONFIG_PATH_INFO) -> Result<String> {
+        let mut source_name: DISPLAYCONFIG_SOURCE_DEVICE_NAME = unsafe { std::mem::zeroed() };
+        source_name.header.r#type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+        source_name.header.size = std::mem::size_of::<DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32;
+        source_name.header.adapterId = path.sourceInfo.adapterId;
+        source_name.header.id = path.sourceInfo.id;
 
-    fn sub(self, other: Self) -> Self {
-        Self(POINT {
-            x: self.0.x - other.0.x,
-            y: self.0.y - other.0.y,
+        let result = unsafe {
+            DisplayConfigGetDeviceInfo(
+                &mut source_name.header as *mut DISPLAYCONFIG_DEVICE_INFO_HEADER,
+            )
+        };
+
+        if result != 0 {
+            return Err(DisplayPropertiesError::WinAPI(format!(
+                "DisplayConfigGetDeviceInfo (source) failed: {}",
+                result
+            )));
+        }
+
+        // Convert wide string to String
+        let len = source_name
+            .viewGdiDeviceName
+            .iter()
+            .position(|&c| c == 0)
+            .unwrap_or(source_name.viewGdiDeviceName.len());
+        Ok(String::from_utf16_lossy(
+            &source_name.viewGdiDeviceName[..len],
+        ))
+    }
+
+    /// Gets the friendly name and device path for a display target
+    fn get_target_device_info(path: &DISPLAYCONFIG_PATH_INFO) -> Result<(String, String)> {
+        let mut target_name: DISPLAYCONFIG_TARGET_DEVICE_NAME = unsafe { std::mem::zeroed() };
+        target_name.header.r#type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
+        target_name.header.size = std::mem::size_of::<DISPLAYCONFIG_TARGET_DEVICE_NAME>() as u32;
+        target_name.header.adapterId = path.targetInfo.adapterId;
+        target_name.header.id = path.targetInfo.id;
+
+        let result = unsafe {
+            DisplayConfigGetDeviceInfo(
+                &mut target_name.header as *mut DISPLAYCONFIG_DEVICE_INFO_HEADER,
+            )
+        };
+
+        if result != 0 {
+            return Err(DisplayPropertiesError::WinAPI(format!(
+                "DisplayConfigGetDeviceInfo (target) failed: {}",
+                result
+            )));
+        }
+
+        // Convert friendly name
+        let friendly_len = target_name
+            .monitorFriendlyDeviceName
+            .iter()
+            .position(|&c| c == 0)
+            .unwrap_or(target_name.monitorFriendlyDeviceName.len());
+        let friendly_name =
+            String::from_utf16_lossy(&target_name.monitorFriendlyDeviceName[..friendly_len]);
+
+        // Convert device path (key)
+        let path_len = target_name
+            .monitorDevicePath
+            .iter()
+            .position(|&c| c == 0)
+            .unwrap_or(target_name.monitorDevicePath.len());
+        let device_path = String::from_utf16_lossy(&target_name.monitorDevicePath[..path_len]);
+
+        Ok((friendly_name, device_path))
+    }
+
+    /// Converts modern API mode info to DisplaySettings
+    fn fetch_settings_from_mode(
+        path: &DISPLAYCONFIG_PATH_INFO,
+        source_mode: &DISPLAYCONFIG_MODE_INFO,
+        target_mode: &DISPLAYCONFIG_MODE_INFO,
+    ) -> Result<DisplaySettings> {
+        let source = unsafe { &source_mode.Anonymous.sourceMode };
+        let target = unsafe { &target_mode.Anonymous.targetMode };
+
+        // Extract rotation from path.targetInfo.rotation
+        let rotation = path.targetInfo.rotation;
+        let orientation = Orientation::from_rotation(rotation.0 as u32);
+
+        // Extract scaling from targetInfo
+        let scaling = Scaling::from_value(path.targetInfo.scaling.0);
+
+        // Extract bit depth from pixel format
+        let bit_depth = BitDepth::from_pixel_format(source.pixelFormat.0);
+
+        // Extract scanline ordering
+        let scanline_ordering =
+            ScanlineOrdering::from_value(target.targetVideoSignalInfo.scanLineOrdering.0);
+
+        Ok(DisplaySettings {
+            position: Position(source.position),
+            resolution: Resolution::new(source.width, source.height),
+            frequency: Frequency::new(Self::calculate_frequency(&target.targetVideoSignalInfo)),
+            orientation,
+            scaling,
+            bit_depth,
+            scanline_ordering,
         })
     }
-}
 
-impl Neg for Position {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        Self(POINT {
-            x: -self.0.x,
-            y: -self.0.y,
-        })
-    }
-}
-
-impl fmt::Display for Position {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({}, {})", self.0.x, self.0.y)
-    }
-}
-
-impl fmt::Debug for Position {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Point")
-            .field(&self.0.x)
-            .field(&self.0.y)
-            .finish()
-    }
-}
-
-/// Errors that occur while parsing a position from a string
-#[derive(Error, Debug)]
-pub enum ParsePositionError {
-    #[error("Error parsing integer")]
-    IntError(#[from] std::num::ParseIntError),
-    #[error("First part missing")]
-    FirstPart,
-    #[error("Second part missing. Expected format: <x>,<y>")]
-    SecondPart,
-}
-
-impl FromStr for Position {
-    type Err = ParsePositionError;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let mut parts = s.split(',');
-        let x = parts.next().ok_or(ParsePositionError::FirstPart)?.parse()?;
-        let y = parts
-            .next()
-            .ok_or(ParsePositionError::SecondPart)?
-            .parse()?;
-        Ok(Self::new(x, y))
-    }
-}
-
-/// Contains the resolution of a display
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Resolution {
-    pub width: u32,
-    pub height: u32,
-}
-
-impl Resolution {
-    /// Creates a new resolution
-    pub fn new(width: u32, height: u32) -> Self {
-        Self { width, height }
-    }
-}
-
-impl fmt::Display for Resolution {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}x{}", self.width, self.height)
-    }
-}
-
-/// Errors that occur while parsing a resolution from a string
-#[derive(Error, Debug)]
-pub enum ParseResolutionError {
-    #[error("Error parsing integer")]
-    IntError(#[from] std::num::ParseIntError),
-    #[error("First integer missing")]
-    FirstPart,
-    #[error("Second integer missing. Expected format: <width>x<height>")]
-    SecondPart,
-}
-
-impl FromStr for Resolution {
-    type Err = ParseResolutionError;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let mut parts = s.split('x');
-        let width = parts
-            .next()
-            .ok_or(ParseResolutionError::FirstPart)?
-            .parse()?;
-        let height = parts
-            .next()
-            .ok_or(ParseResolutionError::SecondPart)?
-            .parse()?;
-        Ok(Self::new(width, height))
-    }
-}
-
-/// Contains the orientation of a display
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Orientation {
-    Landscape,        // default
-    LandscapeFlipped, // upside-down
-    Portrait,         // rotate right
-    PortraitFlipped,  // rotate left
-}
-
-impl Orientation {
-    /// Creates a new orientation from `winsafe::co::DMD0`
-    fn from_winsafe(co_dmdo: co::DMDO) -> Result<Self> {
-        match co_dmdo {
-            co::DMDO::DEFAULT => Ok(Orientation::Landscape),
-            co::DMDO::D90 => Ok(Orientation::PortraitFlipped),
-            co::DMDO::D180 => Ok(Orientation::LandscapeFlipped),
-            co::DMDO::D270 => Ok(Orientation::Portrait),
-            _ => Err(DisplayPropertiesError::InvalidOrientation(
-                co_dmdo.to_string(),
-            )),
-        }
-    }
-
-    /// Creates the winsafe orientation struct
-    fn to_winsafe(self) -> co::DMDO {
-        match self {
-            Orientation::Landscape => co::DMDO::DEFAULT,
-            Orientation::PortraitFlipped => co::DMDO::D90,
-            Orientation::LandscapeFlipped => co::DMDO::D180,
-            Orientation::Portrait => co::DMDO::D270,
-        }
-    }
-}
-
-impl fmt::Display for Orientation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Orientation::Landscape => write!(f, "Default"),
-            Orientation::LandscapeFlipped => write!(f, "UpsideDown"),
-            Orientation::Portrait => write!(f, "Right"),
-            Orientation::PortraitFlipped => write!(f, "Left"),
-        }
-    }
-}
-
-/// Errors that occur while parsing an orientation from a string
-#[derive(Error, Debug)]
-pub enum ParseOrientationError {
-    #[error("Invalid orientation. Allowed values: `Default`, `UpsideDown`, `Right`, `Left`")]
-    InvalidOrientation,
-}
-
-impl FromStr for Orientation {
-    type Err = ParseOrientationError;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "default" | "landscape" => Ok(Orientation::Landscape),
-            "upsidedown" | "landscapeflipped" => Ok(Orientation::LandscapeFlipped),
-            "right" | "portrait" => Ok(Orientation::Portrait),
-            "left" | "portraitflipped" => Ok(Orientation::PortraitFlipped),
-            _ => Err(ParseOrientationError::InvalidOrientation),
-        }
-    }
-}
-
-/// Contains the fixed output of a display
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum FixedOutput {
-    Default,
-    Stretch,
-    Center,
-}
-
-impl FixedOutput {
-    /// Creates a new fixed output struct from `winsafe::co::DMDF0`
-    fn from_winsafe(co_dmdfo: co::DMDFO) -> Result<Self> {
-        match co_dmdfo {
-            co::DMDFO::DEFAULT => Ok(FixedOutput::Default),
-            co::DMDFO::STRETCH => Ok(FixedOutput::Stretch),
-            co::DMDFO::CENTER => Ok(FixedOutput::Center),
-            _ => Err(DisplayPropertiesError::InvalidFixedOutput(
-                co_dmdfo.to_string(),
-            )),
-        }
-    }
-
-    /// Creates a winsafe struct
-    fn to_winsafe(self) -> co::DMDFO {
-        match self {
-            FixedOutput::Default => co::DMDFO::DEFAULT,
-            FixedOutput::Stretch => co::DMDFO::STRETCH,
-            FixedOutput::Center => co::DMDFO::CENTER,
-        }
-    }
-}
-
-impl fmt::Display for FixedOutput {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            FixedOutput::Default => write!(f, "Default"),
-            FixedOutput::Stretch => write!(f, "Stretch"),
-            FixedOutput::Center => write!(f, "Center"),
-        }
-    }
-}
-
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Frequency(u32);
-
-impl Frequency {
-    pub fn new(v: u32) -> Self {
-        Self(v)
-    }
-}
-
-impl fmt::Display for Frequency {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-#[derive(Error, Debug)]
-pub enum ParseFrequencyError {
-    #[error("Error parsing integer")]
-    IntError(#[from] std::num::ParseIntError),
-}
-
-impl FromStr for Frequency {
-    type Err = ParseFrequencyError;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Ok(Frequency(s.parse::<u32>()?))
-    }
-}
-
-/// Errors that occur while parsing a fixed output from a string
-#[derive(Error, Debug)]
-pub enum ParseFixedOutputError {
-    #[error("Invalid fxed output mode. Allowed values: `Default`, `Stretch`, `Center`")]
-    InvalidFixedOutput,
-}
-
-impl FromStr for FixedOutput {
-    type Err = ParseFixedOutputError;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "default" => Ok(FixedOutput::Default),
-            "stretch" => Ok(FixedOutput::Stretch),
-            "center" => Ok(FixedOutput::Center),
-            _ => Err(ParseFixedOutputError::InvalidFixedOutput),
+    /// Calculates frequency from rational vSyncFreq
+    fn calculate_frequency(
+        signal_info: &windows::Win32::Devices::Display::DISPLAYCONFIG_VIDEO_SIGNAL_INFO,
+    ) -> u32 {
+        if signal_info.vSyncFreq.Denominator != 0 {
+            signal_info.vSyncFreq.Numerator / signal_info.vSyncFreq.Denominator
+        } else {
+            60 // Default fallback
         }
     }
 }

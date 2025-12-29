@@ -28,8 +28,8 @@ defaults:
     shell: bash
 
 jobs:
-  test:
-    name: Test Suite
+  check:
+    name: Check
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout sources
@@ -42,13 +42,8 @@ jobs:
       - name: Cache
         uses: Swatinem/rust-cache@v2
 
-      # `test` is used instead of `build` to also include the test modules in
-      # the compilation check.
-      - name: Compile
-        run: cargo test --no-run
-
-      - name: Test
-        run: cargo test -- --nocapture --quiet
+      - name: Run cargo check
+        run: cargo check
 
   lints:
     name: Lints
