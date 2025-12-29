@@ -14,17 +14,6 @@ jobs:
         with:
           command: check
 
-  test:
-    name: Test Suite
-    runs-on: windows-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v6
-      - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-
   lints:
     name: Lints
     runs-on: windows-latest

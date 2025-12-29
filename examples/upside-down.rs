@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Primary display has no settings");
     }
 
-    display_set.primary().apply()?;
+    display_set.apply()?;
     refresh()?;
 
     Ok(())
