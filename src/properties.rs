@@ -428,6 +428,12 @@ impl Frequency {
     }
 }
 
+impl fmt::Display for Frequency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum ParseFrequencyError {
     #[error("Error parsing integer")]

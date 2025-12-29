@@ -28,6 +28,13 @@ struct Opts {
 /// Subcommands to select the mode of operatiom
 #[derive(StructOpt, Debug)]
 enum SubCommands {
+    /// Displays information about a specific display or all displays if no id is provided
+    #[structopt(alias = "i")]
+    Info {
+        /// The id of the display (optional - if not provided, lists all displays)
+        #[structopt(short, long)]
+        id: Option<usize>,
+    },
     /// Sets the primary display
     #[structopt(alias = "sp")]
     SetPrimary {
@@ -120,6 +127,59 @@ fn main() -> Result<()> {
     log::debug!("Discovered displays:\n{}", display_set);
 
     match opts.cmd {
+        SubCommands::Info { id } => {
+            match id {
+                Some(id) => {
+                    // Display info for a specific display
+                    let display = display_set
+                        .get(id)
+                        .ok_or_else(|| eyre!("Display with id {} not found", id))?;
+
+                    println!("Display ID: {}", display.index());
+                    println!("Name:       {}", display.name());
+                    println!("String:     {}", display.string());
+                    println!("Key:        {}", display.key());
+                    println!("Primary:    {}", display.is_primary());
+
+                    if let Some(settings) = display.settings() {
+                        let settings = settings.borrow();
+                        println!("\nSettings:");
+                        println!("  Position:     {}", settings.position);
+                        println!("  Resolution:   {}", settings.resolution);
+                        println!("  Orientation:  {}", settings.orientation);
+                        println!("  Fixed Output: {}", settings.fixed_output);
+                        println!("  Frequency:    {} Hz", settings.frequency);
+                    } else {
+                        println!("\nSettings:   None (Inactive)");
+                    }
+                }
+                None => {
+                    // List all displays
+                    println!("All Displays:");
+                    println!();
+                    for display in display_set.displays() {
+                        println!("Display ID: {}", display.index());
+                        println!("Name:       {}", display.name());
+                        println!("String:     {}", display.string());
+                        println!("Key:        {}", display.key());
+                        println!("Primary:    {}", display.is_primary());
+
+                        if let Some(settings) = display.settings() {
+                            let settings = settings.borrow();
+                            println!("Settings:");
+                            println!("  Position:     {}", settings.position);
+                            println!("  Resolution:   {}", settings.resolution);
+                            println!("  Orientation:  {}", settings.orientation);
+                            println!("  Fixed Output: {}", settings.fixed_output);
+                            println!("  Frequency:    {} Hz", settings.frequency);
+                        } else {
+                            println!("Settings:   None (Inactive)");
+                        }
+                        println!();
+                    }
+                }
+            }
+        }
         SubCommands::SetPrimary { id } => {
             let display = display_set
                 .get(id)
