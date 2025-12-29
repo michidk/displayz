@@ -4,17 +4,26 @@ use std::ops::{Add, Neg, Sub};
 use std::str::FromStr;
 
 use thiserror::Error;
-use winsafe::{DISPLAY_DEVICE, GmidxEnum, POINT, co};
+use windows::Win32::Foundation::{POINT, POINTL};
+use windows::Win32::Graphics::Gdi::{
+    DISPLAY_DEVICEW,
+    DEVMODEW, ENUM_CURRENT_SETTINGS, EnumDisplaySettingsW,
+    DEVMODE_DISPLAY_ORIENTATION, DEVMODE_DISPLAY_FIXED_OUTPUT,
+    DEVMODE_FIELD_FLAGS,
+    CDS_TYPE, DISP_CHANGE,
+    ChangeDisplaySettingsExW,
+};
+use windows::core::PCWSTR;
 
 /// Error type for the display module
 #[derive(Error, Debug)]
 pub enum DisplayPropertiesError {
     #[error("Display {0} has no settings")]
     NoSettings(String),
-    #[error("Error when calling the Windows API")]
-    WinAPI(#[from] co::ERROR),
-    #[error("Apply failed, returned flags: {0}")]
-    ApplyFailed(co::DISP_CHANGE),
+    #[error("Error when calling the Windows API: {0}")]
+    WinAPI(String),
+    #[error("Apply failed, returned code: {0}")]
+    ApplyFailed(i32),
     #[error("Invalid orientation: {0}")]
     InvalidOrientation(String),
     #[error("Invalid fixed output: {0}")]
@@ -62,41 +71,74 @@ pub struct DisplaySettings {
 }
 
 impl DisplayProperties {
-    /// Create a display properties struct from a winsafe display
-    pub fn from_winsafe(device: &DISPLAY_DEVICE) -> Result<DisplayProperties> {
-        let active = device
-            .StateFlags
-            .has(co::DISPLAY_DEVICE::ATTACHED_TO_DESKTOP);
+    /// Create a display properties struct from a Windows display device
+    pub fn from_windows(device: &DISPLAY_DEVICEW) -> Result<DisplayProperties> {
+        let active = (device.StateFlags & 0x00000001) != 0; // DISPLAY_DEVICE_ATTACHED_TO_DESKTOP
+
+        // Convert device name from wide string
+        let name = unsafe {
+            let len = device.DeviceName.iter().position(|&c| c == 0).unwrap_or(device.DeviceName.len());
+            String::from_utf16_lossy(&device.DeviceName[..len])
+        };
+
         let settings = if active {
-            Some(RefCell::new(Self::fetch_settings(&device.DeviceName())?))
+            Some(RefCell::new(Self::fetch_settings(&name)?))
         } else {
             None
         };
 
+        // Convert device string from wide string
+        let string = unsafe {
+            let len = device.DeviceString.iter().position(|&c| c == 0).unwrap_or(device.DeviceString.len());
+            String::from_utf16_lossy(&device.DeviceString[..len])
+        };
+
+        // Convert device key from wide string
+        let key = unsafe {
+            let len = device.DeviceKey.iter().position(|&c| c == 0).unwrap_or(device.DeviceKey.len());
+            String::from_utf16_lossy(&device.DeviceKey[..len])
+        };
+
         Ok(DisplayProperties {
-            name: device.DeviceName(),
-            string: device.DeviceString(),
-            key: device.DeviceKey(),
+            name,
+            string,
+            key,
             active,
-            primary: Cell::new(device.StateFlags.has(co::DISPLAY_DEVICE::PRIMARY_DEVICE)),
+            primary: Cell::new((device.StateFlags & 0x00000004) != 0), // DISPLAY_DEVICE_PRIMARY_DEVICE
             settings,
         })
     }
 
     /// Fetch the settings of a display
     fn fetch_settings(name: &str) -> Result<DisplaySettings> {
-        let mut devmode = winsafe::DEVMODE::default();
-        winsafe::EnumDisplaySettings(
-            Some(name),
-            GmidxEnum::Enum(winsafe::co::ENUM_SETTINGS::CURRENT),
-            &mut devmode,
-        )?;
+        let mut devmode: DEVMODEW = unsafe { std::mem::zeroed() };
+        devmode.dmSize = std::mem::size_of::<DEVMODEW>() as u16;
+
+        // Convert name to wide string
+        let wide_name: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+
+        let result = unsafe {
+            EnumDisplaySettingsW(
+                PCWSTR(wide_name.as_ptr()),
+                ENUM_CURRENT_SETTINGS,
+                &mut devmode,
+            )
+        };
+
+        if !result.as_bool() {
+            return Err(DisplayPropertiesError::WinAPI(
+                format!("EnumDisplaySettingsW failed for display {}", name)
+            ));
+        }
 
         Ok(DisplaySettings {
-            position: Position(devmode.dmPosition()),
+            position: Position(POINTL {
+                x: unsafe { devmode.Anonymous1.Anonymous2.dmPosition.x },
+                y: unsafe { devmode.Anonymous1.Anonymous2.dmPosition.y },
+            }),
             resolution: Resolution::new(devmode.dmPelsWidth, devmode.dmPelsHeight),
-            orientation: Orientation::from_winsafe(devmode.dmDisplayOrientation())?,
-            fixed_output: FixedOutput::from_winsafe(devmode.dmDisplayFixedOutput())?,
+            orientation: Orientation::from_windows(unsafe { devmode.Anonymous1.Anonymous2.dmDisplayOrientation.0 })?,
+            fixed_output: FixedOutput::from_windows(unsafe { devmode.Anonymous1.Anonymous2.dmDisplayFixedOutput.0 })?,
             frequency: Frequency(devmode.dmDisplayFrequency),
         })
     }
@@ -108,14 +150,13 @@ impl DisplayProperties {
         }
         let settings = self.settings.as_ref().unwrap().borrow(); // safe, because we just checked it
 
-        let mut flags =
-            winsafe::co::CDS::UPDATEREGISTRY | winsafe::co::CDS::NORESET | winsafe::co::CDS::GLOBAL;
+        let mut flags = 0x00000001u32 | 0x00000004u32 | 0x00000008u32; // CDS_UPDATEREGISTRY | CDS_NORESET | CDS_GLOBAL
 
         if self.primary.get() {
-            flags |= winsafe::co::CDS::SET_PRIMARY;
+            flags |= 0x00000002u32; // CDS_SET_PRIMARY
         }
 
-        let mut devmode = winsafe::DEVMODE::from_display_settings(
+        let devmode = DEVMODEW::from_display_settings(
             settings.position,
             settings.orientation,
             settings.fixed_output,
@@ -130,22 +171,30 @@ impl DisplayProperties {
             flags
         );
 
-        let result = winsafe::ChangeDisplaySettingsEx(Some(&self.name), Some(&mut devmode), flags);
-        // use into_ok_or_err as soon it is stable
-        match result {
-            Ok(_) => {
-                log::debug!("Successfully applied settings for {}", self.name);
-                Ok(())
-            }
-            Err(err) => {
-                log::error!("Failed to apply settings for {}: {:?}", self.name, err);
-                Err(DisplayPropertiesError::ApplyFailed(err))
-            }
+        // Convert name to wide string
+        let wide_name: Vec<u16> = self.name.encode_utf16().chain(std::iter::once(0)).collect();
+
+        let result = unsafe {
+            ChangeDisplaySettingsExW(
+                PCWSTR(wide_name.as_ptr()),
+                Some(&devmode),
+                None,
+                CDS_TYPE(flags),
+                None,
+            )
+        };
+
+        if result.0 == 0 { // DISP_CHANGE_SUCCESSFUL
+            log::debug!("Successfully applied settings for {}", self.name);
+            Ok(())
+        } else {
+            log::error!("Failed to apply settings for {}: {:?}", self.name, result);
+            Err(DisplayPropertiesError::ApplyFailed(result.0))
         }
     }
 }
 
-/// Provides methods to set properties of `winsafe::DEVMODE`
+/// Provides methods to set properties of `DEVMODEW`
 trait FromDisplaySettings {
     fn set_position(&mut self, position: Position);
     fn set_orientation(&mut self, orientation: Orientation);
@@ -153,15 +202,16 @@ trait FromDisplaySettings {
     fn set_resolution(&mut self, resolution: Resolution);
     fn set_frequency(&mut self, frequency: Frequency);
 
-    /// Converts display settings into a `winsafe::DEVMODE` struct
+    /// Converts display settings into a `DEVMODEW` struct
     fn from_display_settings(
         position: Position,
         orientation: Orientation,
         fixed_output: FixedOutput,
         resolution: Resolution,
         frequency: Frequency,
-    ) -> winsafe::DEVMODE {
-        let mut devmode = winsafe::DEVMODE::default();
+    ) -> DEVMODEW {
+        let mut devmode: DEVMODEW = unsafe { std::mem::zeroed() };
+        devmode.dmSize = std::mem::size_of::<DEVMODEW>() as u16;
         devmode.set_position(position);
         devmode.set_orientation(orientation);
         devmode.set_fixed_output(fixed_output);
@@ -171,42 +221,55 @@ trait FromDisplaySettings {
     }
 }
 
-impl FromDisplaySettings for winsafe::DEVMODE {
+impl FromDisplaySettings for DEVMODEW {
     fn set_position(&mut self, position: Position) {
-        self.set_dmPosition(position.0);
-        self.dmFields |= winsafe::co::DM::POSITION;
+        unsafe {
+            self.Anonymous1.Anonymous2.dmPosition = position.0;
+        }
+        self.dmFields |= DEVMODE_FIELD_FLAGS(0x00000020); // DM_POSITION
     }
 
     fn set_orientation(&mut self, orientation: Orientation) {
-        self.set_dmDisplayOrientation(orientation.to_winsafe());
-        self.dmFields |= winsafe::co::DM::DISPLAYORIENTATION;
+        unsafe {
+            self.Anonymous1.Anonymous2.dmDisplayOrientation = DEVMODE_DISPLAY_ORIENTATION(orientation.to_windows());
+        }
+        self.dmFields |= DEVMODE_FIELD_FLAGS(0x00000080); // DM_DISPLAYORIENTATION
     }
 
     fn set_fixed_output(&mut self, fixed_output: FixedOutput) {
-        self.set_dmDisplayFixedOutput(fixed_output.to_winsafe());
-        self.dmFields |= winsafe::co::DM::DISPLAYFIXEDOUTPUT;
+        unsafe {
+            self.Anonymous1.Anonymous2.dmDisplayFixedOutput = DEVMODE_DISPLAY_FIXED_OUTPUT(fixed_output.to_windows());
+        }
+        self.dmFields |= DEVMODE_FIELD_FLAGS(0x20000000); // DM_DISPLAYFIXEDOUTPUT
     }
 
     fn set_resolution(&mut self, resolution: Resolution) {
         self.dmPelsWidth = resolution.width;
         self.dmPelsHeight = resolution.height;
-        self.dmFields |= winsafe::co::DM::PELSWIDTH | winsafe::co::DM::PELSHEIGHT;
+        self.dmFields |= DEVMODE_FIELD_FLAGS(0x00080000 | 0x00100000); // DM_PELSWIDTH | DM_PELSHEIGHT
     }
 
     fn set_frequency(&mut self, frequency: Frequency) {
         self.dmDisplayFrequency = frequency.0;
-        self.dmFields |= winsafe::co::DM::DISPLAYFREQUENCY;
+        self.dmFields |= DEVMODE_FIELD_FLAGS(0x00400000); // DM_DISPLAYFREQUENCY
     }
 }
 
 /// Contains the position of a display
-#[derive(Default, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Position(POINT);
+#[derive(Default, Copy, Clone, PartialEq, Eq)]
+pub struct Position(POINTL);
+
+impl std::hash::Hash for Position {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.x.hash(state);
+        self.0.y.hash(state);
+    }
+}
 
 impl Position {
     /// Create a position
     pub fn new(x: i32, y: i32) -> Self {
-        Self(POINT { x, y })
+        Self(POINTL { x, y })
     }
 }
 
@@ -214,7 +277,7 @@ impl Add for Position {
     type Output = Self;
 
     fn add(self, other: Self) -> Self {
-        Self(POINT {
+        Self(POINTL {
             x: self.0.x + other.0.x,
             y: self.0.y + other.0.y,
         })
@@ -225,7 +288,7 @@ impl Sub for Position {
     type Output = Self;
 
     fn sub(self, other: Self) -> Self {
-        Self(POINT {
+        Self(POINTL {
             x: self.0.x - other.0.x,
             y: self.0.y - other.0.y,
         })
@@ -236,7 +299,7 @@ impl Neg for Position {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        Self(POINT {
+        Self(POINTL {
             x: -self.0.x,
             y: -self.0.y,
         })
@@ -341,26 +404,26 @@ pub enum Orientation {
 }
 
 impl Orientation {
-    /// Creates a new orientation from `winsafe::co::DMD0`
-    fn from_winsafe(co_dmdo: co::DMDO) -> Result<Self> {
-        match co_dmdo {
-            co::DMDO::DEFAULT => Ok(Orientation::Landscape),
-            co::DMDO::D90 => Ok(Orientation::PortraitFlipped),
-            co::DMDO::D180 => Ok(Orientation::LandscapeFlipped),
-            co::DMDO::D270 => Ok(Orientation::Portrait),
+    /// Creates a new orientation from Windows constant
+    fn from_windows(dmdo: u32) -> Result<Self> {
+        match dmdo {
+            0 => Ok(Orientation::Landscape),        // DMDO_DEFAULT
+            1 => Ok(Orientation::PortraitFlipped),  // DMDO_90
+            2 => Ok(Orientation::LandscapeFlipped), // DMDO_180
+            3 => Ok(Orientation::Portrait),         // DMDO_270
             _ => Err(DisplayPropertiesError::InvalidOrientation(
-                co_dmdo.to_string(),
+                dmdo.to_string(),
             )),
         }
     }
 
-    /// Creates the winsafe orientation struct
-    fn to_winsafe(self) -> co::DMDO {
+    /// Creates the Windows orientation constant
+    fn to_windows(self) -> u32 {
         match self {
-            Orientation::Landscape => co::DMDO::DEFAULT,
-            Orientation::PortraitFlipped => co::DMDO::D90,
-            Orientation::LandscapeFlipped => co::DMDO::D180,
-            Orientation::Portrait => co::DMDO::D270,
+            Orientation::Landscape => 0,        // DMDO_DEFAULT
+            Orientation::PortraitFlipped => 1,  // DMDO_90
+            Orientation::LandscapeFlipped => 2, // DMDO_180
+            Orientation::Portrait => 3,         // DMDO_270
         }
     }
 }
@@ -406,24 +469,24 @@ pub enum FixedOutput {
 }
 
 impl FixedOutput {
-    /// Creates a new fixed output struct from `winsafe::co::DMDF0`
-    fn from_winsafe(co_dmdfo: co::DMDFO) -> Result<Self> {
-        match co_dmdfo {
-            co::DMDFO::DEFAULT => Ok(FixedOutput::Default),
-            co::DMDFO::STRETCH => Ok(FixedOutput::Stretch),
-            co::DMDFO::CENTER => Ok(FixedOutput::Center),
+    /// Creates a new fixed output struct from Windows constant
+    fn from_windows(dmdfo: u32) -> Result<Self> {
+        match dmdfo {
+            0 => Ok(FixedOutput::Default), // DMDFO_DEFAULT
+            1 => Ok(FixedOutput::Stretch), // DMDFO_STRETCH
+            2 => Ok(FixedOutput::Center),  // DMDFO_CENTER
             _ => Err(DisplayPropertiesError::InvalidFixedOutput(
-                co_dmdfo.to_string(),
+                dmdfo.to_string(),
             )),
         }
     }
 
-    /// Creates a winsafe struct
-    fn to_winsafe(self) -> co::DMDFO {
+    /// Creates a Windows constant
+    fn to_windows(self) -> u32 {
         match self {
-            FixedOutput::Default => co::DMDFO::DEFAULT,
-            FixedOutput::Stretch => co::DMDFO::STRETCH,
-            FixedOutput::Center => co::DMDFO::CENTER,
+            FixedOutput::Default => 0, // DMDFO_DEFAULT
+            FixedOutput::Stretch => 1, // DMDFO_STRETCH
+            FixedOutput::Center => 2,  // DMDFO_CENTER
         }
     }
 }

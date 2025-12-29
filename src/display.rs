@@ -2,7 +2,11 @@ use core::fmt;
 use std::cell::{Cell, RefCell};
 
 use thiserror::Error;
-use winsafe::{EnumDisplayDevices, co};
+use windows::Win32::Graphics::Gdi::{
+    DISPLAY_DEVICEW, EnumDisplayDevicesW, ChangeDisplaySettingsExW,
+    CDS_TYPE, DISP_CHANGE,
+};
+use windows::core::PCWSTR;
 
 use crate::{
     DisplayPropertiesError,
@@ -14,14 +18,14 @@ use crate::{
 pub enum DisplayError {
     #[error("Error in DisplayProperties")]
     Properties(#[from] DisplayPropertiesError),
-    #[error("Error when calling the Windows API")]
-    WinAPI(#[from] co::ERROR),
+    #[error("Error when calling the Windows API: {0}")]
+    WinAPI(String),
     #[error("Only active displays can used as a primary display")]
     PrimaryDisplay,
     #[error("Display {0} has no settings")]
     NoSettings(String),
-    #[error("Failed to commit the changes; Returned flags: {0}")]
-    FailedToCommit(co::DISP_CHANGE),
+    #[error("Failed to commit the changes; Returned code: {0}")]
+    FailedToCommit(i32),
 }
 
 type Result<T = ()> = std::result::Result<T, DisplayError>;
@@ -199,32 +203,52 @@ pub fn query_displays() -> Result<DisplaySet> {
     let mut result = Vec::<DisplayProperties>::new();
     let mut primary_index = 0;
 
-    for (dev_num, display_device) in EnumDisplayDevices(None, None).enumerate() {
-        let display_device = match display_device {
-            Ok(dd) => dd,
-            Err(e) => {
-                // Windows 11 24H2 returns ERROR_INVALID_HANDLE after enumerating all displays
-                // This is expected behavior when there are no more displays to enumerate
-                if e == co::ERROR::INVALID_HANDLE {
-                    log::debug!("No more displays to enumerate (got ERROR_INVALID_HANDLE)");
-                    break;
-                }
-                return Err(e.into());
-            }
+    let mut dev_num = 0u32;
+    loop {
+        let mut display_device: DISPLAY_DEVICEW = unsafe { std::mem::zeroed() };
+        display_device.cb = std::mem::size_of::<DISPLAY_DEVICEW>() as u32;
+
+        let success = unsafe {
+            EnumDisplayDevicesW(
+                PCWSTR::null(),
+                dev_num,
+                &mut display_device,
+                0,
+            )
+        };
+
+        if !success.as_bool() {
+            // No more displays to enumerate
+            log::debug!("No more displays to enumerate at index {}", dev_num);
+            break;
+        }
+
+        // Convert device name from wide string for logging
+        let device_name = unsafe {
+            let len = display_device.DeviceName.iter().position(|&c| c == 0).unwrap_or(display_device.DeviceName.len());
+            String::from_utf16_lossy(&display_device.DeviceName[..len])
+        };
+
+        // Convert device string from wide string for logging
+        let device_string = unsafe {
+            let len = display_device.DeviceString.iter().position(|&c| c == 0).unwrap_or(display_device.DeviceString.len());
+            String::from_utf16_lossy(&display_device.DeviceString[..len])
         };
 
         log::debug!(
             "{}: {} - {}",
             dev_num,
-            display_device.DeviceName(),
-            display_device.DeviceString()
+            device_name,
+            device_string
         );
 
-        let properties = DisplayProperties::from_winsafe(display_device)?;
+        let properties = DisplayProperties::from_windows(&display_device)?;
         if properties.primary.get() {
-            primary_index = dev_num;
+            primary_index = dev_num as usize;
         }
         result.push(properties);
+
+        dev_num += 1;
     }
 
     Ok(DisplaySet {
@@ -235,9 +259,19 @@ pub fn query_displays() -> Result<DisplaySet> {
 
 /// Refreshes the screen to apply the changes
 pub fn refresh() -> Result {
-    let result = winsafe::ChangeDisplaySettingsEx(None, None, winsafe::co::CDS::DYNAMICALLY);
-    match result {
-        Ok(_) => Ok(()),
-        Err(err) => Err(DisplayError::FailedToCommit(err)),
+    let result = unsafe {
+        ChangeDisplaySettingsExW(
+            PCWSTR::null(),
+            None,
+            None,
+            CDS_TYPE(0), // CDS_DYNAMICALLY equivalent - apply immediately
+            None,
+        )
+    };
+
+    if result.0 == 0 { // DISP_CHANGE_SUCCESSFUL
+        Ok(())
+    } else {
+        Err(DisplayError::FailedToCommit(result.0))
     }
 }
