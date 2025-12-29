@@ -37,6 +37,7 @@ displayz --help
 
 The following subcommands are available:
 
+- `info`: Displays information about all connected displays.
 - `set-primary --id <id>`: Sets the display with the specified ID as the primary display.
 - `primary <properties>`: Sets the primary display properties.
 - `properties --id <id> <properties>`: Sets the display properties for the specified ID.
