@@ -341,10 +341,10 @@ impl DisplayProperties {
     fn calculate_frequency(
         signal_info: &windows::Win32::Devices::Display::DISPLAYCONFIG_VIDEO_SIGNAL_INFO,
     ) -> u32 {
-        if signal_info.vSyncFreq.Denominator != 0 {
-            signal_info.vSyncFreq.Numerator / signal_info.vSyncFreq.Denominator
-        } else {
-            60 // Default fallback
-        }
+        signal_info
+            .vSyncFreq
+            .Numerator
+            .checked_div(signal_info.vSyncFreq.Denominator)
+            .unwrap_or(60)
     }
 }
