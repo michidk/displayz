@@ -17,7 +17,7 @@ choco install displayz
 
 ### Cargo
 
-Install [displayz using Cargo](https://crates.io/displayz) on Windows:
+Install [displayz using Cargo](https://crates.io/crates/displayz) on Windows:
 
 ```sh
 cargo install displayz
