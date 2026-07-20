@@ -26,6 +26,10 @@ windows = { version = "0.62.2", features = [
     "Win32_Foundation",
 ] }
 
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"
+targets = ["x86_64-pc-windows-msvc"]
+
 [features]
 default = ["json"]
 json = ["dep:serde", "dep:serde_json"]
