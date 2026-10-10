@@ -1,6 +1,7 @@
 use displayz::{Orientation, query_displays, refresh};
 
 #[test]
+#[ignore = "requires a real Windows display and changes its orientation"]
 fn test_orientation_flip_functionality() -> Result<(), Box<dyn std::error::Error>> {
     let _ = env_logger::builder().is_test(true).try_init();
 

@@ -38,6 +38,7 @@ fn get_primary_display_name() -> Result<String, Box<dyn std::error::Error>> {
 }
 
 #[test]
+#[ignore = "requires real Windows displays and changes the primary display"]
 fn test_change_primary_display_and_restore() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logger for debugging
     let _ = env_logger::builder().is_test(true).try_init();

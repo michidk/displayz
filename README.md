@@ -55,3 +55,25 @@ The `<properties>` argument can be multiple (but at least one and max one per ki
 ### Rust Library
 
 See the examples in the [examples/](examples/) folder and the [documentation](https://docs.rs/displayz/latest/displayz/) on how to use the library.
+
+## Tests
+
+CI compiles the display integration tests but does not run them. They require
+real Windows displays and can change the primary display or its orientation.
+Run them on a Windows desktop, one at a time:
+
+```sh
+cargo test -- --ignored --test-threads=1
+```
+
+## Releases
+
+The workflows use the shared [Orcastrate templates](https://github.com/michidk/workflows).
+Configure `RELEASE_TOKEN` and crates.io Trusted Publishing using the
+[setup guide](https://github.com/michidk/workflows#rust-releases).
+The Trusted Publisher uses owner `michidk`, repository `displayz`, workflow
+`publish.yml`, and environment `publish-crates.io`.
+
+Run **Bump Version & Tag** on `main` with the next `X.Y.Z` version. After
+verification and the Windows build, **Release** creates a draft with git-cliff
+release notes. Publishing the draft triggers **Publish to crates.io**.

@@ -1,32 +1,71 @@
+# @orcastrate
+# template: rust-ci
+# params:
+#   test_os: [windows-latest]
+#   runner_os: windows-latest
+# @end-orcastrate
+
+name: Test & Lint
+
 on: [push, pull_request]
 
-name: Continuous Integration
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUST_BACKTRACE: short
+  RUSTFLAGS: "-D warnings"
+  RUSTUP_MAX_RETRIES: 10
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  check:
-    name: Check
-    runs-on: windows-latest
+  test:
+    name: Test Suite
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: ["windows-latest"]
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v7
-      - name: Run cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+
+      - name: Cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+
+      - name: Compile
+        run: cargo test --no-run
+
+      - name: Test
+        run: cargo test -- --nocapture --quiet
+
 
   lints:
     name: Lints
     runs-on: windows-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check --color always
+
       - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings

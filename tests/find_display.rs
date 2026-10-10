@@ -1,6 +1,7 @@
 use displayz::query_displays;
 
 #[test]
+#[ignore = "requires a real Windows display"]
 fn test_find_display_functionality() -> Result<(), Box<dyn std::error::Error>> {
     let _ = env_logger::builder().is_test(true).try_init();
 
