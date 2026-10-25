@@ -1,5 +1,5 @@
 # @orcastrate
-# template: rust-release
+# template: rust/release
 # params:
 #   bin_name: displayz
 #   runner_os: windows-latest
