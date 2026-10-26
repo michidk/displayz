@@ -42,10 +42,10 @@ jobs:
 
 
       - name: Compile
-        run: cargo test --no-run
+        run: cargo test --workspace --all-features --no-run
 
       - name: Test
-        run: cargo test -- --nocapture --quiet
+        run: cargo test --workspace --all-features -- --nocapture --quiet
 
 
   lints:
