@@ -11,7 +11,7 @@ on:
         description: Version bump type
         required: true
         type: choice
-        default: patch
+        default: auto
         options:
           - auto
           - patch
