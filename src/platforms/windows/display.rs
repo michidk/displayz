@@ -8,11 +8,7 @@ use windows::Win32::Devices::Display::{
     SDC_USE_SUPPLIED_DISPLAY_CONFIG, SetDisplayConfig,
 };
 
-use crate::{
-    DisplayPropertiesError,
-    properties::{DisplayProperties, DisplaySettings},
-    types::Position,
-};
+use crate::{DisplayPropertiesError, DisplayProperties, DisplaySettings, Position};
 
 /// Error type for the display module
 #[derive(Error, Debug)]
