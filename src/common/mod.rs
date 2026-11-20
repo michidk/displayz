@@ -1,10 +1,10 @@
 //! Common helpers for `displayz`
 
-/// Height and Width of a Display (`usize`)
-pub type Resolution = (usize, usize);
+/// Height and Width of a Display (`i32`)
+pub struct Resolution(i32, i32);
 
 /// X/Y positions of a display.
-pub type Position = (usize, usize);
+pub struct Position(i32, i32);
 
 /// `Vec` type of the `Display` struct, exposed on a platform-dependent basis.
 pub type Displays = Vec<crate::Display>;
@@ -29,10 +29,10 @@ pub trait DisplayOutput {
     }
     /// Returns the `Position` custom type of the `Display`.
     fn get_position(&self) -> Position;
-    /// Returns the `Resolution` custom type of the `Display`.
+    /// Returns the current `Resolution` of the `Display`.
     fn get_resolution(&self) -> Resolution;
-    /// Returns the `Resolutions` custom type of the `Display`.
-    fn get_resolutions(&self) -> Resolutions;
+    /// Returns the current supported `Resolutions` of the `Display`.
+    fn get_supported_resolutions(&self) -> Resolutions;
     /// Returns the EDID `&str` of the `Display.
     fn get_edid(&self) -> &str;
 }
