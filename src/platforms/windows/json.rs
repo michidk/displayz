@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::Display;
+use super::Display;
 
 /// Serializable display settings for JSON output
 #[derive(Serialize)]

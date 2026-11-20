@@ -13,7 +13,7 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::core::PCWSTR;
 
-use crate::types::{
+use crate::{
     BitDepth, ConnectorType, Frequency, Orientation, Position, Resolution, Scaling,
     ScanlineOrdering,
 };

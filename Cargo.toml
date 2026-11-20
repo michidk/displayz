@@ -12,6 +12,12 @@ license = "MIT"
 keywords = ["display", "settings", "cli"]
 categories = ["command-line-utilities", "config"]
 
+[features]
+default = ["json"]
+json = ["dep:serde", "dep:serde_json"]
+unix-wayland = [ "wayland-client", "wayland-protocols-wlr", "wayland-protocols-plasma" ]
+unix-x11 = []
+
 [dependencies]
 color-eyre = "0.6.5"
 env_logger = "0.11.8"
@@ -20,16 +26,19 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 structopt = "0.3.26"
 thiserror = "2.0.17"
+
+[target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62.2", features = [
     "Win32_Graphics_Gdi",
     "Win32_Devices_Display",
     "Win32_Foundation",
 ] }
 
+[target.'cfg(target_family = "unix")'.dependencies]
+wayland-client = { version = "=0.30.0", features = ["log", "calloop"], optional = true }
+wayland-protocols-wlr = { version = "=0.1.0", features = ["client"], optional = true }
+wayland-protocols-plasma = { version = "=0.2.0", features = ["client"], optional = true }
+
 [package.metadata.docs.rs]
 default-target = "x86_64-pc-windows-msvc"
 targets = ["x86_64-pc-windows-msvc"]
-
-[features]
-default = ["json"]
-json = ["dep:serde", "dep:serde_json"]

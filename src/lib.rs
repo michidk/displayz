@@ -1,15 +1,20 @@
 //! A library to interact with the Windows API for display settings.
 //!
-//! This library provides a high-level abstraction around the Windows Display Configuration API
-//! for querying and modifying display settings such as resolution, orientation, position, and scaling.
+//! This library provides an abstraction around some `winuser.h` calls relevant for modifying display settings.
+#[cfg_attr(
+    any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ),
+    path = "platforms/linux/mod.rs"
+)]
+#[cfg_attr(target_os = "windows", path = "platforms/windows/mod.rs")]
+#[cfg_attr(target_os = "macos", path = "platforms/macos/mod.rs")]
+mod platform;
+pub use crate::platform::*;
 
-mod display;
-mod properties;
-mod types;
-
-#[cfg(feature = "json")]
-pub mod json;
-
-pub use display::*;
-pub use properties::*;
-pub use types::*;
+mod common;
+pub use crate::common::*;
