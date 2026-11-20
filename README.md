@@ -5,6 +5,8 @@
 
 A CLI tool and library to control display settings on Windows written in Rust.
 
+<p align="center"><a href="#installation">Install</a> · <a href="#usage">Usage</a> · <a href="https://docs.rs/displayz/latest/displayz/">Rust API</a></p>
+
 ## Installation
 
 ### Chocolatey
@@ -29,9 +31,10 @@ cargo install displayz
 
 After installation, the `displayz` command will be available.
 
-Use the following command to access the help:
+First list your connected displays and their IDs, then inspect the available options:
 
 ```sh
+displayz info
 displayz --help
 ```
 
