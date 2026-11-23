@@ -1,13 +1,15 @@
-use displayz::{Orientation, query_displays, refresh};
+#[cfg(windows)]
+use displayz::{query_displays, refresh, Orientation};
 
 /// Turns the primary display upside-down
+#[cfg(windows)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let display_set = query_displays()?;
     println!("Discovered displays:\n{}", display_set);
 
     if let Some(settings) = display_set.primary().settings() {
         {
-            let settings = &mut *settings.borrow_mut();
+            let mut settings = &mut *settings.borrow_mut();
             println!("Current orientation: {:?}", settings.orientation);
 
             settings.orientation = match settings.orientation {
@@ -28,3 +30,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[cfg(not(windows))]
+fn main() {}
